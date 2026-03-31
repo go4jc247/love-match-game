@@ -35,9 +35,10 @@ function createDefaultState() {
 
 function sizeCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
-  const vw = window.innerWidth;
-  // Use full width, height = width * 1.35 to give room for board + HUD
-  const vh = Math.min(window.innerHeight, vw * 1.45);
+  // Use the #app container width (max 480px) instead of full viewport
+  const container = document.getElementById('app');
+  const vw = container ? container.clientWidth : Math.min(window.innerWidth, 480);
+  const vh = container ? container.clientHeight : window.innerHeight;
 
   canvas.style.width = `${vw}px`;
   canvas.style.height = `${vh}px`;
@@ -189,7 +190,13 @@ class App {
 
   _handleUIAction(event) {
     const { action } = event;
+    console.log('[App] UI action:', action, event);
 
+    try { this._dispatchAction(action, event); }
+    catch (err) { console.error('[App] Action error:', action, err); }
+  }
+
+  _dispatchAction(action, event) {
     switch (action) {
       // -- Welcome --
       case 'welcome:start':
@@ -372,12 +379,18 @@ class App {
 
   showLevelMap() {
     const allLevels = this.levelManager.getLevels();
+    // Build progress map: { levelNumber: { stars, unlocked } }
+    const currentLevel = this.state.progress.currentLevel;
+    const progressMap = {};
+    for (const level of allLevels) {
+      const num = level.id;
+      const stars = this.state.progress.levelStars[num] || 0;
+      progressMap[num] = { stars, unlocked: num <= currentLevel };
+    }
     this.ui.showScreen('levelMap', {
       levels: allLevels,
-      progress: {
-        currentLevel: this.state.progress.currentLevel,
-        levelStars: this.state.progress.levelStars,
-      },
+      progress: progressMap,
+      currentLevel,
     });
   }
 
@@ -498,7 +511,7 @@ class App {
       this.renderer = new Renderer(canvas, theme);
 
       // Feed initial state to the renderer — it has its own render loop
-      this.renderer.setGameState(this.engine.getState());
+      this._syncRenderer();
 
       // Wire input callbacks from the renderer
       this.renderer.onClick(({ row, col }) => this._onTileClick(row, col));
@@ -673,7 +686,7 @@ class App {
 
     // Update renderer with final state
     if (this.renderer && this.engine) {
-      this.renderer.setGameState(this.engine.getState());
+      this._syncRenderer();
     }
 
     // Update HUD
@@ -768,7 +781,7 @@ class App {
           this.audio.playSound('shuffle');
           // Update state after shuffle
           if (this.renderer && this.engine) {
-            this.renderer.setGameState(this.engine.getState());
+            this._syncRenderer();
           }
           break;
 
@@ -783,14 +796,14 @@ class App {
         default:
           // Unknown step type, update board state
           if (this.renderer && this.engine) {
-            this.renderer.setGameState(this.engine.getState());
+            this._syncRenderer();
           }
           break;
       }
 
       // Keep renderer in sync after each step
       if (this.renderer && this.engine) {
-        this.renderer.setGameState(this.engine.getState());
+        this._syncRenderer();
       }
     }
   }
@@ -869,7 +882,7 @@ class App {
 
       // Update renderer state
       if (this.renderer && this.engine) {
-        this.renderer.setGameState(this.engine.getState());
+        this._syncRenderer();
       }
 
       // Update HUD
@@ -1111,7 +1124,7 @@ class App {
         if (this.renderer && this.engine) {
           this.renderer.animateSwap(hint.to, hint.from).then(() => {
             if (this.renderer && this.engine) {
-              this.renderer.setGameState(this.engine.getState());
+              this._syncRenderer();
             }
           });
         }
@@ -1325,6 +1338,40 @@ class App {
     if (this.renderer) {
       this.renderer.destroy();
       this.renderer = null;
+    }
+  }
+
+  /**
+   * Convert engine state to renderer state format.
+   * Engine grid has {type, special} objects; renderer expects numeric tile indices in a "board" property.
+   */
+  _engineStateToRendererState() {
+    const engineState = this.engine.getState();
+    const tileTypes = engineState.tileTypes; // array of type strings like ["kitten", "heart", ...]
+
+    const board = engineState.grid.map(row =>
+      row.map(tile => {
+        if (!tile) return -1;
+        const idx = tileTypes.indexOf(tile.type);
+        return idx >= 0 ? idx : 0;
+      })
+    );
+
+    return {
+      board,
+      score: engineState.score,
+      movesRemaining: engineState.movesRemaining,
+      combo: engineState.comboLevel,
+      goals: engineState.goals,
+      gameOver: engineState.gameOver,
+      levelComplete: engineState.levelComplete,
+    };
+  }
+
+  /** Push current engine state to the renderer. */
+  _syncRenderer() {
+    if (this.renderer && this.engine) {
+      this.renderer.setGameState(this._engineStateToRendererState());
     }
   }
 }

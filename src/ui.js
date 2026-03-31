@@ -86,7 +86,8 @@ export class UIManager {
       return;
     }
 
-    this.hideScreen(screenName);
+    // Hide all other screens first (one screen at a time, like Royal Match)
+    this.hideAllScreens();
 
     const panel = builder.call(this, data);
     panel.classList.add('lm-screen', `lm-screen--${screenName}`);
@@ -316,6 +317,7 @@ export class UIManager {
     const codeLabel = this._el('label', 'lm-welcome__label', { text: 'Pair Code' });
     const codeRow = this._el('div', 'lm-welcome__code-row');
     const codeInput = this._el('input', 'lm-input', { type: 'text', placeholder: 'Enter or generate code...' });
+    codeInput.value = 'peace-peace-664'; // default during development
     codeInput.dataset.field = 'pairCode';
     const codeGenBtn = this._el('button', 'lm-btn lm-btn--small', { text: 'Generate' });
     codeGenBtn.onclick = () => {
@@ -332,7 +334,6 @@ export class UIManager {
       const name = nameInput.value.trim();
       const pairCode = codeInput.value.trim();
       if (!name) { nameInput.classList.add('lm-input--error'); return; }
-      if (!pairCode) { codeInput.classList.add('lm-input--error'); return; }
       this._emit('welcome:start', { role, name, pairCode });
     };
 
@@ -459,7 +460,7 @@ export class UIManager {
     let chapterIdx = 0;
 
     levels.forEach((level, i) => {
-      const num = level.number || (i + 1);
+      const num = level.id || level.number || (i + 1);
 
       // Insert chapter banner if needed
       if (chapterIdx < chapters.length && num >= chapters[chapterIdx].from) {
@@ -912,6 +913,7 @@ const BASE_STYLES = `
   transition: opacity 0.35s ease, transform 0.35s ease;
   overflow-y: auto;
   overflow-x: hidden;
+  background: #fff;
 }
 
 .lm-screen--visible {
@@ -1187,7 +1189,6 @@ const BASE_STYLES = `
   align-items: center;
   justify-content: center;
   background: linear-gradient(160deg, #fce4ec, #f3e5f5, #e8eaf6);
-  position: relative;
   overflow: hidden;
 }
 
@@ -1312,7 +1313,7 @@ const BASE_STYLES = `
 
 /* ---- Main Menu ---- */
 .lm-main-menu {
-  background: linear-gradient(170deg, #fce4ec, #fff);
+  background: #fff;
   padding: 20px;
   display: flex;
   flex-direction: column;
