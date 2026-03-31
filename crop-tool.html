@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Icon Crop Tool</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #1a1a2e; color: #eee;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 20px; min-height: 100vh;
+}
+h1 { margin-bottom: 8px; font-size: 22px; }
+.instructions { color: #aaa; margin-bottom: 16px; font-size: 14px; text-align: center; max-width: 600px; }
+
+.toolbar {
+  display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; justify-content: center;
+}
+.toolbar label { font-size: 13px; color: #aaa; }
+.toolbar input[type="text"] {
+  background: #2a2a4a; border: 1px solid #444; color: #eee; padding: 6px 10px;
+  border-radius: 6px; width: 130px; font-size: 14px;
+}
+.toolbar input[type="number"] {
+  background: #2a2a4a; border: 1px solid #444; color: #eee; padding: 6px 8px;
+  border-radius: 6px; width: 65px; font-size: 14px; text-align: center;
+}
+.toolbar button {
+  padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
+  font-size: 14px; font-weight: 600;
+}
+.btn-save { background: #4caf50; color: #fff; }
+.btn-save:hover { background: #45a049; }
+.btn-export { background: #2196f3; color: #fff; }
+.btn-export:hover { background: #1976d2; }
+.btn-clear { background: #f44336; color: #fff; }
+.btn-clear:hover { background: #d32f2f; }
+.btn-lock { background: #9c27b0; color: #fff; }
+.btn-lock:hover { background: #7b1fa2; }
+.btn-lock.active { background: #e91e63; }
+.btn-load { background: #ff9800; color: #fff; }
+.btn-load:hover { background: #e68900; }
+
+.canvas-wrap {
+  position: relative; display: inline-block;
+  border: 2px solid #444; border-radius: 8px; overflow: hidden;
+  cursor: none;
+}
+canvas { display: block; }
+
+.crops-panel {
+  margin-top: 24px; width: 100%; max-width: 900px;
+}
+.crops-panel h2 { font-size: 18px; margin-bottom: 12px; }
+.crops-grid {
+  display: flex; flex-wrap: wrap; gap: 16px;
+}
+.crop-item {
+  background: #2a2a4a; border-radius: 10px; padding: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  border: 2px solid #444;
+}
+.crop-item canvas {
+  border-radius: 6px;
+  background: repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 50% / 16px 16px;
+}
+.crop-item .name { font-size: 13px; font-weight: 600; color: #ddd; }
+.crop-item .size { font-size: 11px; color: #888; }
+.crop-item button {
+  padding: 4px 10px; border: none; border-radius: 4px;
+  background: #f44336; color: #fff; cursor: pointer; font-size: 11px;
+}
+
+.size-row { display: flex; gap: 6px; align-items: center; }
+.size-row span { color: #666; }
+
+#exportBox {
+  display: none; margin-top: 16px; width: 100%; max-width: 900px;
+}
+#exportBox.visible { display: block; }
+#exportBox textarea {
+  width: 100%; height: 200px; background: #0d0d1a; color: #4caf50;
+  border: 2px solid #4caf50; border-radius: 8px; padding: 10px;
+  font-family: monospace; font-size: 13px; resize: vertical;
+}
+#exportBox .copied {
+  color: #4caf50; font-size: 14px; font-weight: bold; margin-top: 6px;
+}
+.export-hint {
+  color: #aaa; font-size: 13px; margin-top: 4px;
+}
+
+.drop-zone {
+  border: 2px dashed #555; border-radius: 8px; padding: 40px;
+  text-align: center; color: #888; cursor: pointer; margin-bottom: 16px;
+  transition: border-color 0.2s;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: #ff9800; color: #ff9800; }
+.drop-zone.loaded { display: none; }
+
+.file-info {
+  color: #aaa; font-size: 13px; margin-bottom: 10px; display: none;
+}
+.file-info.visible { display: block; }
+</style>
+</head>
+<body>
+
+<h1>Icon Crop Tool</h1>
+<p class="instructions">
+  Load an image, set crop size, move mouse to position, click to stamp.
+  When done, hit Export to copy coordinates for Claude.
+</p>
+
+<div class="drop-zone" id="dropZone">
+  Drop an image here or click to browse
+  <input type="file" id="fileInput" accept="image/*" style="display:none" />
+</div>
+
+<div class="file-info" id="fileInfo"></div>
+
+<div class="toolbar">
+  <button class="btn-load" id="btnLoad">Load Image</button>
+  <div class="size-row">
+    <label>Size:</label>
+    <input type="number" id="cropW" value="280" min="50" max="800" />
+    <span>x</span>
+    <input type="number" id="cropH" value="280" min="50" max="800" />
+  </div>
+  <button class="btn-lock active" id="btnSquare">Square</button>
+  <label>Name:</label>
+  <input type="text" id="cropName" placeholder="e.g. heart" />
+  <button class="btn-save" id="btnStamp">Stamp</button>
+  <button class="btn-export" id="btnExport">Export JSON</button>
+  <button class="btn-clear" id="btnClear">Clear All</button>
+</div>
+
+<div class="canvas-wrap" id="canvasWrap" style="display:none">
+  <canvas id="sheet"></canvas>
+</div>
+
+<div id="exportBox">
+  <textarea id="exportText" readonly></textarea>
+  <div class="copied" id="copiedMsg">Copied to clipboard!</div>
+</div>
+
+<div class="crops-panel">
+  <h2>Cropped Icons (<span id="cropCount">0</span>)</h2>
+  <div class="crops-grid" id="cropsGrid"></div>
+</div>
+
+<script>
+'use strict';
+
+const sheetCanvas = document.getElementById('sheet');
+const ctx = sheetCanvas.getContext('2d');
+const cropNameInput = document.getElementById('cropName');
+const cropWInput = document.getElementById('cropW');
+const cropHInput = document.getElementById('cropH');
+const cropsGrid = document.getElementById('cropsGrid');
+const cropCountEl = document.getElementById('cropCount');
+const btnSquare = document.getElementById('btnSquare');
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileInfoEl = document.getElementById('fileInfo');
+const canvasWrap = document.getElementById('canvasWrap');
+const exportBox = document.getElementById('exportBox');
+const exportText = document.getElementById('exportText');
+const copiedMsg = document.getElementById('copiedMsg');
+
+let img = null;
+let scale = 1;
+let crops = []; // {name, x, y, w, h} in original image coords
+let loadedFileName = '';
+
+// Cursor position in image coords
+let cursorImg = null;
+let squareMode = true;
+
+// ── File Loading ──
+
+dropZone.addEventListener('click', () => fileInput.click());
+document.getElementById('btnLoad').addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+});
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length) loadFile(e.target.files[0]);
+});
+
+function loadFile(file) {
+  loadedFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const newImg = new Image();
+    newImg.onload = () => {
+      img = newImg;
+      crops = [];
+      fitCanvas();
+      draw();
+      renderCrops();
+      dropZone.classList.add('loaded');
+      canvasWrap.style.display = 'inline-block';
+      fileInfoEl.textContent = `${file.name} (${img.width} x ${img.height})`;
+      fileInfoEl.classList.add('visible');
+      exportBox.style.display = 'none';
+    };
+    newImg.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Crop Logic ──
+
+function getCropSize() {
+  let w = parseInt(cropWInput.value) || 280;
+  let h = parseInt(cropHInput.value) || 280;
+  if (squareMode) h = w;
+  return { w, h };
+}
+
+function fitCanvas() {
+  const maxW = Math.min(900, window.innerWidth - 40);
+  scale = maxW / img.width;
+  sheetCanvas.width = img.width * scale;
+  sheetCanvas.height = img.height * scale;
+}
+
+function draw() {
+  if (!img) return;
+  ctx.clearRect(0, 0, sheetCanvas.width, sheetCanvas.height);
+  ctx.drawImage(img, 0, 0, sheetCanvas.width, sheetCanvas.height);
+
+  // Draw saved crop boxes (green)
+  for (const crop of crops) {
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect(crop.x * scale, crop.y * scale, crop.w * scale, crop.h * scale);
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(76, 175, 80, 0.12)';
+    ctx.fillRect(crop.x * scale, crop.y * scale, crop.w * scale, crop.h * scale);
+    ctx.fillStyle = '#4caf50';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(crop.name, crop.x * scale + 4, crop.y * scale + 14);
+  }
+
+  // Draw live cursor box (orange)
+  if (cursorImg) {
+    const { w, h } = getCropSize();
+    const bx = cursorImg.x - w / 2;
+    const by = cursorImg.y - h / 2;
+
+    // Dim outside
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.fillRect(0, 0, sheetCanvas.width, by * scale);
+    ctx.fillRect(0, (by + h) * scale, sheetCanvas.width, sheetCanvas.height - (by + h) * scale);
+    ctx.fillRect(0, by * scale, bx * scale, h * scale);
+    ctx.fillRect((bx + w) * scale, by * scale, sheetCanvas.width - (bx + w) * scale, h * scale);
+
+    // Box outline
+    ctx.strokeStyle = '#ff9800';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(bx * scale, by * scale, w * scale, h * scale);
+
+    // Crosshair
+    const cx = cursorImg.x * scale;
+    const cy = cursorImg.y * scale;
+    ctx.strokeStyle = 'rgba(255, 152, 0, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
+    ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
+    ctx.stroke();
+
+    // Size label
+    ctx.fillStyle = '#ff9800';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(`${w} x ${h}`, bx * scale + 4, (by + h) * scale - 4);
+  }
+}
+
+function canvasToImg(e) {
+  const rect = sheetCanvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) / scale,
+    y: (e.clientY - rect.top) / scale
+  };
+}
+
+sheetCanvas.addEventListener('pointermove', (e) => {
+  cursorImg = canvasToImg(e);
+  draw();
+});
+
+sheetCanvas.addEventListener('pointerleave', () => {
+  cursorImg = null;
+  draw();
+});
+
+// Click = stamp
+sheetCanvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (!cursorImg) return;
+  const { w, h } = getCropSize();
+  const name = cropNameInput.value.trim() || `icon-${crops.length + 1}`;
+
+  const cropX = Math.round(Math.max(0, cursorImg.x - w / 2));
+  const cropY = Math.round(Math.max(0, cursorImg.y - h / 2));
+  const cropW = Math.round(Math.min(w, img.width - cropX));
+  const cropH = Math.round(Math.min(h, img.height - cropY));
+
+  crops.push({ name, x: cropX, y: cropY, w: cropW, h: cropH });
+  saveCrops();
+
+  // Auto-increment name
+  const match = name.match(/^(.*?)(\d+)$/);
+  if (match) {
+    cropNameInput.value = match[1] + (parseInt(match[2]) + 1);
+  } else {
+    cropNameInput.value = '';
+  }
+
+  draw();
+  renderCrops();
+  autoExport();
+});
+
+// Square toggle
+btnSquare.addEventListener('click', () => {
+  squareMode = !squareMode;
+  btnSquare.classList.toggle('active', squareMode);
+  btnSquare.textContent = squareMode ? 'Square' : 'Free';
+  if (squareMode) cropHInput.value = cropWInput.value;
+  cropHInput.disabled = squareMode;
+  draw();
+});
+
+cropWInput.addEventListener('input', () => {
+  if (squareMode) cropHInput.value = cropWInput.value;
+  draw();
+});
+cropHInput.addEventListener('input', () => draw());
+cropHInput.disabled = squareMode;
+
+// Clear
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (crops.length && !confirm('Remove all crops?')) return;
+  crops = [];
+  saveCrops();
+  draw();
+  renderCrops();
+  exportBox.classList.remove('visible');
+});
+
+// Auto-save to localStorage
+function saveCrops() {
+  const data = {
+    file: loadedFileName,
+    imageSize: img ? { w: img.width, h: img.height } : null,
+    crops: crops.map(c => ({
+      name: c.name,
+      x: Math.round(c.x),
+      y: Math.round(c.y),
+      w: Math.round(c.w),
+      h: Math.round(c.h)
+    }))
+  };
+  localStorage.setItem('cropTool_crops', JSON.stringify(data));
+}
+
+// Auto-export: always show JSON live as you stamp
+function autoExport() {
+  if (!crops.length) { exportBox.classList.remove('visible'); return; }
+  const data = {
+    file: loadedFileName,
+    imageSize: img ? { w: img.width, h: img.height } : null,
+    crops: crops.map(c => ({
+      name: c.name,
+      x: Math.round(c.x),
+      y: Math.round(c.y),
+      w: Math.round(c.w),
+      h: Math.round(c.h)
+    }))
+  };
+  exportText.value = JSON.stringify(data, null, 2);
+  exportBox.classList.add('visible');
+}
+
+// Export button = copy to clipboard
+document.getElementById('btnExport').addEventListener('click', () => {
+  if (!crops.length) return alert('No crops to export!');
+  const json = exportText.value;
+  exportText.select();
+  navigator.clipboard.writeText(json).then(() => {
+    copiedMsg.textContent = 'Copied to clipboard!';
+    copiedMsg.style.display = 'block';
+    setTimeout(() => { copiedMsg.style.display = 'none'; }, 3000);
+  }).catch(() => {
+    copiedMsg.textContent = 'Select all text above and copy manually (Cmd+C)';
+    copiedMsg.style.display = 'block';
+  });
+});
+
+function renderCrops() {
+  cropCountEl.textContent = crops.length;
+  cropsGrid.innerHTML = '';
+  for (let i = 0; i < crops.length; i++) {
+    const crop = crops[i];
+    const item = document.createElement('div');
+    item.className = 'crop-item';
+
+    const pc = document.createElement('canvas');
+    const previewSize = 120;
+    pc.width = previewSize;
+    pc.height = previewSize;
+    const pctx = pc.getContext('2d');
+
+    const aspectSrc = crop.w / crop.h;
+    let dw, dh, dx, dy;
+    if (aspectSrc > 1) {
+      dw = previewSize; dh = previewSize / aspectSrc;
+      dx = 0; dy = (previewSize - dh) / 2;
+    } else {
+      dh = previewSize; dw = previewSize * aspectSrc;
+      dx = (previewSize - dw) / 2; dy = 0;
+    }
+    pctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, dx, dy, dw, dh);
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'name';
+    nameEl.textContent = crop.name;
+
+    const sizeEl = document.createElement('div');
+    sizeEl.className = 'size';
+    sizeEl.textContent = `${Math.round(crop.w)} x ${Math.round(crop.h)} -> 256x256`;
+
+    const rmBtn = document.createElement('button');
+    rmBtn.textContent = 'Remove';
+    rmBtn.onclick = () => {
+      crops.splice(i, 1);
+      saveCrops();
+      draw();
+      renderCrops();
+      autoExport();
+    };
+
+    item.append(pc, nameEl, sizeEl, rmBtn);
+    cropsGrid.appendChild(item);
+  }
+}
+
+window.addEventListener('resize', () => {
+  if (img) { fitCanvas(); draw(); }
+});
+</script>
+</body>
+</html>

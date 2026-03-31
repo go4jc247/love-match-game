@@ -30,31 +30,96 @@ canvas {
 
 // ── Constants ──
 const COLS = 8, ROWS = 8;
-const TILE_TYPES = [
-  { emoji: '\u{1F431}', bg1: '#ffb6c1', bg2: '#ff9aaf', icon: 'icons/tile-paw.png' },       // Paw - light pink
-  { emoji: '\u2764\uFE0F',  bg1: '#ff4d6d', bg2: '#e63950', icon: 'icons/tile-heart.png' },  // Heart - red
-  { emoji: '\u{1F339}', bg1: '#ff6b8a', bg2: '#e0446b', icon: 'icons/tile-rose.png' },       // Rose - deep pink
-  { emoji: '\u{1F48D}', bg1: '#ffd700', bg2: '#f0c000', icon: null },                         // Ring - gold (emoji)
-  { emoji: '\u{1F54A}\uFE0F',  bg1: '#87ceeb', bg2: '#6db8d9', icon: 'icons/tile-envelope.png' }, // Envelope - blue
-  { emoji: '\u{1F382}', bg1: '#c8a2e8', bg2: '#b68ad8', icon: 'icons/tile-bouquet.png' },    // Bouquet - lavender
-  { emoji: '\u{1F490}', bg1: '#ff7f50', bg2: '#e86b40', icon: 'icons/tile-bow.png' },        // Bow - coral
-  { emoji: '\u{1F381}', bg1: '#e040a0', bg2: '#c83090', icon: 'icons/tile-gift.png' },       // Gift - magenta
+
+// All available gems (27 total) - each level picks 7-8 from this pool
+const ALL_GEMS = [
+  { id: 's1-heart', file: 'icons/tile-heart.png', name: 'Crystal Heart', bg1: '#ff4d6d', bg2: '#e63950' },
+  { id: 's1-rose', file: 'icons/tile-rose.png', name: 'Red Rose', bg1: '#ff6b8a', bg2: '#e0446b' },
+  { id: 's1-bow', file: 'icons/tile-bow.png', name: 'Purple Bow', bg1: '#c8a2e8', bg2: '#b68ad8' },
+  { id: 's1-envelope', file: 'icons/tile-envelope.png', name: 'Love Letter', bg1: '#f5deb3', bg2: '#e8d099' },
+  { id: 's1-paw', file: 'icons/tile-paw.png', name: 'Paw Medal', bg1: '#ffb6c1', bg2: '#ff9aaf' },
+  { id: 's1-gift', file: 'icons/tile-gift.png', name: 'Heart Gift Box', bg1: '#e040a0', bg2: '#c83090' },
+  { id: 's2-1', file: 'icons/sheet2-icon-1.png', name: 'Green Paw Prints', bg1: '#90ee90', bg2: '#6ddb6d' },
+  { id: 's2-3', file: 'icons/sheet2-icon-3.png', name: 'Flower Bouquet', bg1: '#dda0dd', bg2: '#cc88cc' },
+  { id: 's2-5', file: 'icons/sheet2-icon-5.png', name: 'Blue Cupcake', bg1: '#87ceeb', bg2: '#6db8d9' },
+  { id: 's2-8', file: 'icons/sheet2-icon-8.png', name: 'Yarn Ball', bg1: '#9999ff', bg2: '#7777ee' },
+  { id: 's2-9', file: 'icons/sheet2-icon-9.png', name: 'Kitten with Yarn', bg1: '#ffe4b5', bg2: '#f0d4a0' },
+  { id: 's2-10', file: 'icons/sheet2-icon-10.png', name: 'Mouse', bg1: '#d3d3d3', bg2: '#bbb' },
+  { id: 's2-13', file: 'icons/sheet2-icon-13.png', name: 'Cat Collar', bg1: '#cd5c5c', bg2: '#b84848' },
+  { id: 's2-15', file: 'icons/sheet2-icon-15.png', name: 'Kittens in Box', bg1: '#deb887', bg2: '#c9a46e' },
+  { id: 's3-3', file: 'icons/sheet3-icon-3.png', name: 'Heart Cupcake', bg1: '#ffb6c1', bg2: '#ff9aaf' },
+  { id: 's3-5', file: 'icons/sheet3-icon-5.png', name: 'Rose Bouquet', bg1: '#ff7f7f', bg2: '#e66a6a' },
+  { id: 's3-7', file: 'icons/sheet3-icon-7.png', name: 'Ring Box', bg1: '#ff4444', bg2: '#cc3333' },
+  { id: 's3-10', file: 'icons/sheet3-icon-10.png', name: 'Cake Slice', bg1: '#d2691e', bg2: '#b8551a' },
+  { id: 's4-1', file: 'icons/sheet4-icon-1.png', name: 'Love Letter', bg1: '#ffb6c1', bg2: '#ff9aaf' },
+  { id: 's4-4', file: 'icons/sheet4-icon-4.png', name: 'Gift Box', bg1: '#daa520', bg2: '#c49318' },
+  { id: 's4-6', file: 'icons/sheet4-icon-6.png', name: 'Kissing Kittens', bg1: '#f0e0e0', bg2: '#ddd0d0' },
+  { id: 's5-1', file: 'icons/sheet5-icon-1.png', name: 'Gold Coin', bg1: '#ffd700', bg2: '#f0c000' },
+  { id: 's5-2', file: 'icons/sheet5-icon-2.png', name: 'Candy', bg1: '#ff6b6b', bg2: '#e65555' },
+  { id: 's5-6', file: 'icons/sheet5-icon-6.png', name: 'Diamond', bg1: '#87ceeb', bg2: '#6db8d9' },
+  { id: 's5-11', file: 'icons/sheet5-icon-11.png', name: 'Pink Gift', bg1: '#ff69b4', bg2: '#e0559e' },
+  { id: 's5-16', file: 'icons/sheet5-icon-16.png', name: 'Bell', bg1: '#ffd700', bg2: '#f0c000' },
+  { id: 's5-18', file: 'icons/sheet5-icon-18.png', name: 'Treasure Map', bg1: '#deb887', bg2: '#c9a46e' },
 ];
 
-// Preload tile images
-const tileImages = {};
-let imagesLoaded = 0;
-const totalImages = TILE_TYPES.filter(t => t.icon).length;
+// Tool definitions (special power-ups)
+const TOOLS = [
+  { id: 's5-13', file: 'icons/sheet5-icon-13.png', name: 'Bomb', tool: 1, desc: 'Explodes 3x3 area' },
+  { id: 's5-12', file: 'icons/sheet5-icon-12.png', name: 'Lightning', tool: 2, desc: 'Clears row or column' },
+  { id: 's5-5', file: 'icons/sheet5-icon-5.png', name: 'Rainbow Star', tool: 3, desc: 'Removes all of one type' },
+  { id: 's5-17', file: 'icons/sheet5-icon-17.png', name: 'Magnet', tool: 4, desc: 'Pulls one type to bottom' },
+  { id: 's5-15', file: 'icons/sheet5-icon-15.png', name: 'Stopwatch', tool: 5, desc: 'Freezes moves for 3 turns' },
+  { id: 's5-4', file: 'icons/sheet5-icon-4.png', name: 'Potion', tool: 6, desc: 'Transforms 2x2 to same type' },
+  { id: 's5-8', file: 'icons/sheet5-icon-8.png', name: 'Magic Wand', tool: 7, desc: 'Removes any single tile' },
+  { id: 's5-7', file: 'icons/sheet5-icon-7.png', name: 'Treasure Chest', tool: 8, desc: 'Reveals coins or power-up' },
+  { id: 's5-20', file: 'icons/sheet5-icon-20.png', name: 'Slingshot', tool: 9, desc: 'Clears diagonal line' },
+  { id: 's5-19', file: 'icons/sheet5-icon-19.png', name: 'Cloud', tool: 10, desc: 'Shuffles entire board' },
+];
 
-TILE_TYPES.forEach((t, i) => {
-  if (t.icon) {
-    const img = new Image();
-    img.onload = () => { tileImages[i] = img; imagesLoaded++; };
-    img.onerror = () => { imagesLoaded++; }; // fallback to emoji
-    img.src = t.icon;
+// Pick gems for current level (7 random from pool, seeded by level)
+const GEMS_PER_LEVEL = 7;
+function pickGemsForLevel(lvl) {
+  // Deterministic shuffle based on level so same level = same gems
+  const shuffled = [...ALL_GEMS];
+  let seed = lvl * 2654435761;
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const j = seed % (i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
-});
-const NUM_TYPES = TILE_TYPES.length;
+  return shuffled.slice(0, GEMS_PER_LEVEL);
+}
+
+// Current level tile types
+let TILE_TYPES = [];
+let NUM_TYPES = 0;
+
+// Preloaded images (keyed by file path)
+const imageCache = {};
+let imagesLoaded = 0;
+let totalImages = 0;
+
+function preloadImages(gems) {
+  const allFiles = [...gems.map(g => g.file), ...TOOLS.map(t => t.file)];
+  // Deduplicate
+  const unique = [...new Set(allFiles)];
+  totalImages = unique.length;
+  imagesLoaded = 0;
+  for (const file of unique) {
+    if (imageCache[file]) { imagesLoaded++; continue; }
+    const img = new Image();
+    img.onload = () => { imageCache[file] = img; imagesLoaded++; };
+    img.onerror = () => { imagesLoaded++; };
+    img.src = file;
+  }
+}
+
+function setupLevel(lvl) {
+  const gems = pickGemsForLevel(lvl);
+  TILE_TYPES = gems;
+  NUM_TYPES = TILE_TYPES.length;
+  preloadImages(gems);
+}
 
 const SCORE_3 = 50, SCORE_4 = 100, SCORE_5 = 200;
 const MAX_MOVES = 30;
@@ -527,6 +592,8 @@ function handleRestartClick(cx, cy) {
 }
 
 function restartGame() {
+  level++;
+  setupLevel(level);
   score = 0;
   moves = MAX_MOVES;
   gameOver = false;
@@ -538,7 +605,15 @@ function restartGame() {
   removingTiles.clear();
   scorePopups = [];
   cascadeLevel = 0;
-  initGrid();
+  // Wait for any new images, then init
+  function waitAndInit() {
+    if (imagesLoaded >= totalImages) {
+      initGrid();
+    } else {
+      setTimeout(waitAndInit, 50);
+    }
+  }
+  waitAndInit();
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -678,16 +753,18 @@ function drawTile(row, col, type, overrides) {
   ctx.fillStyle = innerGrad;
   ctx.fill();
 
-  // Icon image or emoji fallback
-  if (tileImages[type]) {
+  // Icon image
+  const cachedImg = imageCache[info.file];
+  if (cachedImg) {
     const imgPad = w * 0.1;
-    ctx.drawImage(tileImages[type], x + imgPad, y + imgPad, w - imgPad * 2, h - imgPad * 2);
+    ctx.drawImage(cachedImg, x + imgPad, y + imgPad, w - imgPad * 2, h - imgPad * 2);
   } else {
-    const emojiSize = w * 0.65;
-    ctx.font = emojiSize + 'px serif';
+    // Fallback: draw first letter
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + (w * 0.4) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(info.emoji, x + w / 2, y + h / 2 + 1);
+    ctx.fillText(info.name[0], x + w / 2, y + h / 2);
   }
 
   ctx.restore();
@@ -981,9 +1058,18 @@ function render(time, dt) {
 
 // ── Init ──
 function init() {
+  setupLevel(level);
   resize();
-  initGrid();
-  requestAnimationFrame(frame);
+  // Wait for images to load before starting
+  function waitForImages() {
+    if (imagesLoaded >= totalImages) {
+      initGrid();
+      requestAnimationFrame(frame);
+    } else {
+      setTimeout(waitForImages, 50);
+    }
+  }
+  waitForImages();
 }
 
 window.addEventListener('resize', resize);

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Icon Assignment Tool</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #1a1a2e; color: #eee;
+  padding: 20px;
+}
+h1 { text-align: center; margin-bottom: 6px; font-size: 22px; }
+.subtitle { text-align: center; color: #aaa; font-size: 14px; margin-bottom: 20px; }
+
+.tools-ref {
+  max-width: 800px; margin: 0 auto 24px;
+  background: #2a2a4a; border-radius: 10px; padding: 16px;
+  border: 1px solid #444;
+}
+.tools-ref h2 { font-size: 16px; margin-bottom: 10px; color: #ff9800; }
+.tools-ref table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tools-ref th { text-align: left; color: #aaa; padding: 4px 8px; border-bottom: 1px solid #444; }
+.tools-ref td { padding: 4px 8px; border-bottom: 1px solid #333; }
+.tools-ref td:first-child { font-weight: bold; color: #ff9800; width: 30px; }
+.tools-ref td:nth-child(2) { color: #fff; width: 120px; }
+.tools-ref td:nth-child(3) { color: #ccc; }
+
+.icons-grid {
+  max-width: 1000px; margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.icon-card {
+  background: #2a2a4a; border-radius: 10px; padding: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border: 2px solid #444;
+  transition: border-color 0.2s;
+}
+.icon-card.assigned-gem { border-color: #4caf50; }
+.icon-card.assigned-tool { border-color: #ff9800; }
+.icon-card.assigned-skip { border-color: #666; opacity: 0.4; }
+
+.icon-card img {
+  width: 100px; height: 100px; object-fit: contain;
+  border-radius: 8px;
+  background: repeating-conic-gradient(#333 0% 25%, #3a3a3a 0% 50%) 50% / 12px 12px;
+}
+.icon-card .name { font-size: 11px; color: #ccc; text-align: center; min-height: 28px; }
+.icon-card .id { font-size: 10px; color: #666; }
+
+.icon-card select {
+  width: 100%; padding: 5px; border-radius: 5px;
+  background: #1a1a2e; color: #eee; border: 1px solid #555;
+  font-size: 12px; cursor: pointer;
+}
+.icon-card select option { background: #1a1a2e; }
+
+.icon-card .badge {
+  font-size: 10px; font-weight: bold; padding: 2px 8px;
+  border-radius: 10px; display: none;
+}
+.icon-card.assigned-gem .badge { display: block; background: #4caf50; color: #fff; }
+.icon-card.assigned-tool .badge { display: block; background: #ff9800; color: #fff; }
+.icon-card.assigned-skip .badge { display: block; background: #666; color: #ccc; }
+
+.section-header {
+  grid-column: 1 / -1;
+  font-size: 16px; font-weight: bold; color: #2196f3;
+  padding: 12px 0 4px; border-bottom: 1px solid #333;
+  margin-top: 8px;
+}
+
+.export-bar {
+  max-width: 1000px; margin: 24px auto; text-align: center;
+  display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; align-items: center;
+}
+.export-bar button {
+  padding: 10px 24px; border: none; border-radius: 8px;
+  font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.btn-export { background: #4caf50; color: #fff; }
+.btn-export:hover { background: #45a049; }
+.btn-copy { background: #2196f3; color: #fff; }
+.btn-copy:hover { background: #1976d2; }
+.stats { color: #aaa; font-size: 14px; }
+
+#exportArea {
+  max-width: 1000px; margin: 12px auto; display: none;
+}
+#exportArea.visible { display: block; }
+#exportArea textarea {
+  width: 100%; height: 200px; background: #0d0d1a; color: #4caf50;
+  border: 2px solid #4caf50; border-radius: 8px; padding: 10px;
+  font-family: monospace; font-size: 12px;
+}
+</style>
+</head>
+<body>
+
+<h1>Love Match - Icon Assignment</h1>
+<p class="subtitle">Assign each icon as a Gem (regular tile), Tool (special power-up), or Skip</p>
+
+<div class="tools-ref">
+  <h2>Special Tools Reference</h2>
+  <table>
+    <tr><th>#</th><th>Tool</th><th>What It Does</th></tr>
+    <tr><td>1</td><td>Bomb</td><td>Explodes 3x3 area around it</td></tr>
+    <tr><td>2</td><td>Lightning</td><td>Clears entire row or column (swipe direction)</td></tr>
+    <tr><td>3</td><td>Rainbow Star</td><td>Removes ALL tiles of one type from the board</td></tr>
+    <tr><td>4</td><td>Magnet</td><td>Pulls all tiles of one type to the bottom</td></tr>
+    <tr><td>5</td><td>Stopwatch</td><td>Freezes move counter for 3 turns</td></tr>
+    <tr><td>6</td><td>Potion</td><td>Transforms 2x2 area into same tile type</td></tr>
+    <tr><td>7</td><td>Magic Wand</td><td>Removes any single tile you tap</td></tr>
+    <tr><td>8</td><td>Treasure Chest</td><td>Opens to reveal bonus coins or random power-up</td></tr>
+    <tr><td>9</td><td>Slingshot</td><td>Clears an entire diagonal line</td></tr>
+    <tr><td>10</td><td>Cloud</td><td>Shuffles the entire board</td></tr>
+  </table>
+</div>
+
+<div class="export-bar">
+  <span class="stats" id="stats">Gems: 0 | Tools: 0 | Skipped: 0</span>
+  <button class="btn-export" id="btnExport">Export JSON</button>
+  <button class="btn-copy" id="btnCopy">Copy to Clipboard</button>
+</div>
+
+<div class="icons-grid" id="grid"></div>
+
+<div id="exportArea">
+  <textarea id="exportText" readonly></textarea>
+</div>
+
+<script>
+'use strict';
+
+const TOOLS = [
+  '', 'Bomb', 'Lightning', 'Rainbow Star', 'Magnet', 'Stopwatch',
+  'Potion', 'Magic Wand', 'Treasure Chest', 'Slingshot', 'Cloud'
+];
+
+const ALL_ICONS = [
+  // Sheet 1
+  { section: 'Sheet 1 — Original' },
+  { id: 's1-heart', file: 'icons/tile-heart.png', name: 'Crystal Heart' },
+  { id: 's1-rose', file: 'icons/tile-rose.png', name: 'Red Rose' },
+  { id: 's1-bouquet', file: 'icons/tile-bouquet.png', name: 'Tulip Bouquet' },
+  { id: 's1-bow', file: 'icons/tile-bow.png', name: 'Purple Bow' },
+  { id: 's1-envelope', file: 'icons/tile-envelope.png', name: 'Love Letter' },
+  { id: 's1-paw', file: 'icons/tile-paw.png', name: 'Paw Medal' },
+  { id: 's1-gift', file: 'icons/tile-gift.png', name: 'Heart Gift Box' },
+
+  // Sheet 2
+  { section: 'Sheet 2 — Kitten World' },
+  { id: 's2-1', file: 'icons/sheet2-icon-1.png', name: 'Green Paw Prints' },
+  { id: 's2-2', file: 'icons/sheet2-icon-2.png', name: 'Champagne' },
+  { id: 's2-3', file: 'icons/sheet2-icon-3.png', name: 'Flower Bouquet' },
+  { id: 's2-4', file: 'icons/sheet2-icon-4.png', name: 'Donut' },
+  { id: 's2-5', file: 'icons/sheet2-icon-5.png', name: 'Blue Cupcake' },
+  { id: 's2-6', file: 'icons/sheet2-icon-6.png', name: 'Fish' },
+  { id: 's2-7', file: 'icons/sheet2-icon-7.png', name: 'Potion Bottle' },
+  { id: 's2-8', file: 'icons/sheet2-icon-8.png', name: 'Yarn Ball' },
+  { id: 's2-9', file: 'icons/sheet2-icon-9.png', name: 'Kitten with Yarn' },
+  { id: 's2-10', file: 'icons/sheet2-icon-10.png', name: 'Mouse' },
+  { id: 's2-11', file: 'icons/sheet2-icon-11.png', name: 'Cat Tamagotchi' },
+  { id: 's2-12', file: 'icons/sheet2-icon-12.png', name: 'Candy Jar' },
+  { id: 's2-13', file: 'icons/sheet2-icon-13.png', name: 'Cat Collar + Bell' },
+  { id: 's2-15', file: 'icons/sheet2-icon-15.png', name: 'Kittens in Box' },
+  { id: 's2-16', file: 'icons/sheet2-icon-16.png', name: 'Fairy Wand' },
+
+  // Sheet 3
+  { section: 'Sheet 3 — Valentine' },
+  { id: 's3-1', file: 'icons/sheet3-icon-1.png', name: 'Pink Paw Prints' },
+  { id: 's3-2', file: 'icons/sheet3-icon-2.png', name: 'Champagne' },
+  { id: 's3-3', file: 'icons/sheet3-icon-3.png', name: 'Heart Cupcake' },
+  { id: 's3-4', file: 'icons/sheet3-icon-4.png', name: 'Heart Locket' },
+  { id: 's3-5', file: 'icons/sheet3-icon-5.png', name: 'Rose Bouquet' },
+  { id: 's3-6', file: 'icons/sheet3-icon-6.png', name: 'Kitten with Bow' },
+  { id: 's3-7', file: 'icons/sheet3-icon-7.png', name: 'Ring Box' },
+  { id: 's3-8', file: 'icons/sheet3-icon-8.png', name: 'Heart Jar' },
+  { id: 's3-9', file: 'icons/sheet3-icon-9.png', name: 'Cat Lock + Key' },
+  { id: 's3-10', file: 'icons/sheet3-icon-10.png', name: 'Cake Slice' },
+
+  // Sheet 4
+  { section: 'Sheet 4 — Romance' },
+  { id: 's4-1', file: 'icons/sheet4-icon-1.png', name: 'Love Letter' },
+  { id: 's4-2', file: 'icons/sheet4-icon-2.png', name: 'Champagne Glasses' },
+  { id: 's4-3', file: 'icons/sheet4-icon-3.png', name: 'Red Yarn Ball' },
+  { id: 's4-4', file: 'icons/sheet4-icon-4.png', name: 'Gift Box (paw tag)' },
+  { id: 's4-5', file: 'icons/sheet4-icon-5.png', name: 'Gold Fish + Heart' },
+  { id: 's4-6', file: 'icons/sheet4-icon-6.png', name: 'Kissing Kittens' },
+  { id: 's4-7', file: 'icons/sheet4-icon-7.png', name: 'Photo Album' },
+  { id: 's4-8', file: 'icons/sheet4-icon-8.png', name: 'Candles' },
+  { id: 's4-10', file: 'icons/sheet4-icon-10.png', name: 'Pink Collar + Bell' },
+
+  // Sheet 5
+  { section: 'Sheet 5 — Power-ups' },
+  { id: 's5-1', file: 'icons/sheet5-icon-1.png', name: 'Gold Coin' },
+  { id: 's5-2', file: 'icons/sheet5-icon-2.png', name: 'Candy' },
+  { id: 's5-3', file: 'icons/sheet5-icon-3.png', name: 'Pink Heart' },
+  { id: 's5-4', file: 'icons/sheet5-icon-4.png', name: 'Blue Potion' },
+  { id: 's5-5', file: 'icons/sheet5-icon-5.png', name: 'Rainbow Star' },
+  { id: 's5-6', file: 'icons/sheet5-icon-6.png', name: 'Diamond' },
+  { id: 's5-7', file: 'icons/sheet5-icon-7.png', name: 'Treasure Chest' },
+  { id: 's5-8', file: 'icons/sheet5-icon-8.png', name: 'Magic Wand' },
+  { id: 's5-9', file: 'icons/sheet5-icon-9.png', name: 'Coin Stack' },
+  { id: 's5-10', file: 'icons/sheet5-icon-10.png', name: 'Heart Key' },
+  { id: 's5-11', file: 'icons/sheet5-icon-11.png', name: 'Pink Gift' },
+  { id: 's5-12', file: 'icons/sheet5-icon-12.png', name: 'Lightning Bolt' },
+  { id: 's5-13', file: 'icons/sheet5-icon-13.png', name: 'Bomb' },
+  { id: 's5-14', file: 'icons/sheet5-icon-14.png', name: 'Love Letter' },
+  { id: 's5-15', file: 'icons/sheet5-icon-15.png', name: 'Stopwatch' },
+  { id: 's5-16', file: 'icons/sheet5-icon-16.png', name: 'Bell' },
+  { id: 's5-17', file: 'icons/sheet5-icon-17.png', name: 'Magnet' },
+  { id: 's5-18', file: 'icons/sheet5-icon-18.png', name: 'Treasure Map' },
+  { id: 's5-19', file: 'icons/sheet5-icon-19.png', name: 'Pink Cloud' },
+  { id: 's5-20', file: 'icons/sheet5-icon-20.png', name: 'Slingshot' },
+];
+
+const grid = document.getElementById('grid');
+const assignments = {}; // id -> { role, toolNum }
+
+// Load saved assignments
+const saved = localStorage.getItem('iconAssignments');
+if (saved) {
+  try { Object.assign(assignments, JSON.parse(saved)); } catch(e) {}
+}
+
+function save() {
+  localStorage.setItem('iconAssignments', JSON.stringify(assignments));
+}
+
+function updateStats() {
+  let gems = 0, tools = 0, skipped = 0, unset = 0;
+  for (const item of ALL_ICONS) {
+    if (item.section) continue;
+    const a = assignments[item.id];
+    if (!a || a.role === '') unset++;
+    else if (a.role === 'gem') gems++;
+    else if (a.role === 'tool') tools++;
+    else if (a.role === 'skip') skipped++;
+  }
+  document.getElementById('stats').textContent =
+    `Gems: ${gems} | Tools: ${tools} | Skipped: ${skipped} | Unassigned: ${unset}`;
+}
+
+function buildGrid() {
+  grid.innerHTML = '';
+  for (const item of ALL_ICONS) {
+    if (item.section) {
+      const h = document.createElement('div');
+      h.className = 'section-header';
+      h.textContent = item.section;
+      grid.appendChild(h);
+      continue;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'icon-card';
+    card.id = 'card-' + item.id;
+
+    const img = document.createElement('img');
+    img.src = item.file;
+    img.alt = item.name;
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'name';
+    nameEl.textContent = item.name;
+
+    const idEl = document.createElement('div');
+    idEl.className = 'id';
+    idEl.textContent = item.id;
+
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+
+    const sel = document.createElement('select');
+    sel.innerHTML = `
+      <option value="">-- assign --</option>
+      <option value="gem">Gem (regular tile)</option>
+      <optgroup label="Tools">
+        <option value="tool-1">1. Bomb</option>
+        <option value="tool-2">2. Lightning</option>
+        <option value="tool-3">3. Rainbow Star</option>
+        <option value="tool-4">4. Magnet</option>
+        <option value="tool-5">5. Stopwatch</option>
+        <option value="tool-6">6. Potion</option>
+        <option value="tool-7">7. Magic Wand</option>
+        <option value="tool-8">8. Treasure Chest</option>
+        <option value="tool-9">9. Slingshot</option>
+        <option value="tool-10">10. Cloud</option>
+      </optgroup>
+      <option value="skip">Skip (don't use)</option>
+    `;
+
+    // Restore saved value
+    const a = assignments[item.id];
+    if (a) {
+      if (a.role === 'gem') sel.value = 'gem';
+      else if (a.role === 'tool') sel.value = 'tool-' + a.toolNum;
+      else if (a.role === 'skip') sel.value = 'skip';
+      applyStyle(card, badge, a);
+    }
+
+    sel.addEventListener('change', () => {
+      const v = sel.value;
+      let a;
+      if (v === 'gem') a = { role: 'gem' };
+      else if (v === 'skip') a = { role: 'skip' };
+      else if (v.startsWith('tool-')) a = { role: 'tool', toolNum: parseInt(v.split('-')[1]) };
+      else a = { role: '' };
+
+      assignments[item.id] = a;
+      applyStyle(card, badge, a);
+      save();
+      updateStats();
+    });
+
+    card.append(img, nameEl, idEl, sel, badge);
+    grid.appendChild(card);
+  }
+  updateStats();
+}
+
+function applyStyle(card, badge, a) {
+  card.classList.remove('assigned-gem', 'assigned-tool', 'assigned-skip');
+  badge.textContent = '';
+  if (!a || !a.role) return;
+  if (a.role === 'gem') {
+    card.classList.add('assigned-gem');
+    badge.textContent = 'GEM';
+  } else if (a.role === 'tool') {
+    card.classList.add('assigned-tool');
+    badge.textContent = TOOLS[a.toolNum] || 'Tool';
+  } else if (a.role === 'skip') {
+    card.classList.add('assigned-skip');
+    badge.textContent = 'SKIP';
+  }
+}
+
+function getExportData() {
+  const gems = [];
+  const tools = [];
+  const skipped = [];
+  for (const item of ALL_ICONS) {
+    if (item.section) continue;
+    const a = assignments[item.id] || {};
+    const entry = { id: item.id, file: item.file, name: item.name };
+    if (a.role === 'gem') gems.push(entry);
+    else if (a.role === 'tool') tools.push({ ...entry, tool: a.toolNum, toolName: TOOLS[a.toolNum] });
+    else if (a.role === 'skip') skipped.push(entry);
+  }
+  return { gems, tools, skipped };
+}
+
+document.getElementById('btnExport').addEventListener('click', () => {
+  const data = getExportData();
+  const json = JSON.stringify(data, null, 2);
+  document.getElementById('exportText').value = json;
+  document.getElementById('exportArea').classList.add('visible');
+});
+
+document.getElementById('btnCopy').addEventListener('click', () => {
+  const data = getExportData();
+  const json = JSON.stringify(data, null, 2);
+  document.getElementById('exportText').value = json;
+  document.getElementById('exportArea').classList.add('visible');
+  navigator.clipboard.writeText(json).catch(() => {});
+  document.getElementById('btnCopy').textContent = 'Copied!';
+  setTimeout(() => { document.getElementById('btnCopy').textContent = 'Copy to Clipboard'; }, 2000);
+});
+
+buildGrid();
+</script>
+</body>
+</html>
