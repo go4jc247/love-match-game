@@ -1292,30 +1292,126 @@ function useMagnet(row, col) {
   const type = grid[row][col];
   if (type < 0) { locked = false; toolInventory[4]++; return; }
 
-  // Collect positions of this type and remove them
-  const positions = [];
+  // Find the 2 nearest tiles of the same type (by Manhattan distance)
+  const candidates = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      if (grid[r][c] === type) {
-        positions.push({ r, c });
-        grid[r][c] = -1;
+      if (r === row && c === col) continue;
+      if (grid[r][c] === type && !hasObstacle(r, c)) {
+        const dist = Math.abs(r - row) + Math.abs(c - col);
+        candidates.push({ r, c, dist });
       }
     }
   }
+  candidates.sort((a, b) => a.dist - b.dist);
 
-  // Place them at the bottom of their columns
-  for (const pos of positions) {
-    // Find lowest empty spot in this column
-    for (let r = ROWS - 1; r >= 0; r--) {
-      if (grid[r][pos.c] < 0) {
-        grid[r][pos.c] = type;
-        break;
-      }
+  if (candidates.length < 2) {
+    // Not enough matching tiles — refund
+    locked = false;
+    toolInventory[4] = (toolInventory[4] || 0) + 1;
+    return;
+  }
+
+  const pull1 = candidates[0];
+  const pull2 = candidates[1];
+
+  // Find 2 empty adjacent cells next to the tapped tile to pull them into
+  const adjCells = [];
+  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+  for (const [dr, dc] of dirs) {
+    const nr = row + dr, nc = col + dc;
+    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !(nr === pull1.r && nc === pull1.c) && !(nr === pull2.r && nc === pull2.c)) {
+      adjCells.push({ r: nr, c: nc });
     }
   }
 
-  // Just do a quick gravity + settle
-  applyGravity();
+  // Pick 2 adjacent spots (we'll overwrite whatever's there)
+  const dest1 = adjCells[0] || { r: pull1.r, c: pull1.c };
+  const dest2 = adjCells[1] || { r: pull2.r, c: pull2.c };
+
+  // Animate: pull tiles toward the tapped tile
+  const src1x = boardX + pull1.c * tileSize;
+  const src1y = boardY + pull1.r * tileSize;
+  const dst1x = boardX + dest1.c * tileSize;
+  const dst1y = boardY + dest1.r * tileSize;
+  const src2x = boardX + pull2.c * tileSize;
+  const src2y = boardY + pull2.r * tileSize;
+  const dst2x = boardX + dest2.c * tileSize;
+  const dst2y = boardY + dest2.r * tileSize;
+
+  // Store displaced tiles so we can put them back where the pulled tiles came from
+  const displaced1Type = grid[dest1.r][dest1.c];
+  const displaced1Sp = special[dest1.r][dest1.c];
+  const displaced2Type = grid[dest2.r][dest2.c];
+  const displaced2Sp = special[dest2.r][dest2.c];
+
+  animations.push(new Animation(350, (t) => {
+    const et = easeOut(t);
+    // Pull tile 1 toward dest1
+    setOverride(pull1.r, pull1.c, {
+      x: src1x + (dst1x - src1x) * et,
+      y: src1y + (dst1y - src1y) * et
+    });
+    // Pull tile 2 toward dest2
+    setOverride(pull2.r, pull2.c, {
+      x: src2x + (dst2x - src2x) * et,
+      y: src2y + (dst2y - src2y) * et
+    });
+  }, () => {
+    clearOverride(pull1.r, pull1.c);
+    clearOverride(pull2.r, pull2.c);
+
+    // Move displaced tiles to where pulled tiles came from
+    grid[pull1.r][pull1.c] = displaced1Type;
+    special[pull1.r][pull1.c] = displaced1Sp;
+    grid[pull2.r][pull2.c] = displaced2Type;
+    special[pull2.r][pull2.c] = displaced2Sp;
+
+    // Place pulled tiles at destinations
+    grid[dest1.r][dest1.c] = type;
+    special[dest1.r][dest1.c] = 0;
+    grid[dest2.r][dest2.c] = type;
+    special[dest2.r][dest2.c] = 0;
+
+    // Now we have 3 matching tiles: tapped + 2 pulled neighbors
+    // Score and remove all 3
+    const targets = [
+      { row, col },
+      { row: dest1.r, col: dest1.c },
+      { row: dest2.r, col: dest2.c }
+    ];
+
+    const pts = 150;
+    score += pts;
+    scorePopups.push({
+      x: boardX + col * tileSize + tileSize / 2,
+      y: boardY + row * tileSize + tileSize / 2,
+      text: 'Magnet +' + pts, alpha: 1, dy: 0,
+    });
+
+    triggerScreenShake(4);
+    triggerFlash(0.2);
+
+    for (const t of targets) {
+      removingTiles.add(tileKey(t.row, t.col));
+      spawnSparkles(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, '#ff69b4', 5);
+    }
+
+    animations.push(new Animation(MATCH_DUR, (t) => {
+      const et = easeOut(t);
+      for (const tgt of targets) {
+        setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+      }
+    }, () => {
+      for (const t of targets) {
+        grid[t.row][t.col] = -1;
+        clearOverride(t.row, t.col);
+        removingTiles.delete(tileKey(t.row, t.col));
+      }
+      damageAdjacentObstacles(targets);
+      applyGravity();
+    }));
+  }));
 }
 
 // Tool 5: Stopwatch — Freezes move counter for 3 turns
