@@ -170,23 +170,23 @@ export const HUSBAND_THEME = {
   description: 'A rugged workshop full of tools and craftsmanship',
 
   colors: {
-    primary: '#D2691E',
-    secondary: '#708090',
-    accent: '#228B22',
-    background: '#2C1A0E',
-    text: '#F5F0E8',
-    textLight: '#DEB887',
-    saddleBrown: '#8B4513',
-    chocolate: '#D2691E',
-    forestGreen: '#228B22',
-    steel: '#708090',
-    navy: '#000080',
-    warmWood: '#DEB887',
-    darkGray: '#404040',
-    silver: '#C0C0C0',
-    blueSteel: '#4682B4',
-    redBrown: '#8B2500',
-    electricYellow: '#FFD700',
+    primary: '#3B6B8A',        // Steel blue
+    secondary: '#4A6741',      // Forest sage
+    accent: '#C4943A',         // Warm gold
+    background: '#1E2D3D',     // Deep navy
+    text: '#F0EDE8',           // Warm white
+    textLight: '#D4C9B8',      // Parchment
+    saddleBrown: '#5C4033',
+    chocolate: '#6B4226',
+    forestGreen: '#4A6741',
+    steel: '#5A7C95',
+    navy: '#1E2D3D',
+    warmWood: '#C4943A',
+    darkGray: '#2D3748',
+    silver: '#A0AEC0',
+    blueSteel: '#3B6B8A',
+    redBrown: '#8B3A2F',
+    electricYellow: '#D4A843',
     lightWood: '#D2B48C',
   },
 
@@ -219,7 +219,7 @@ export const HUSBAND_THEME = {
   },
 
   background: {
-    gradient: 'linear-gradient(180deg, #3E2723 0%, #2C1A0E 50%, #1A0F08 100%)',
+    gradient: 'linear-gradient(180deg, #2B4A62 0%, #1E2D3D 50%, #162230 100%)',
     floatingElements: ['🪵', '⚙️', '🔩', '💨'],
     floatingCount: 12,
     floatingSpeed: { min: 6, max: 14 },
@@ -229,29 +229,29 @@ export const HUSBAND_THEME = {
 
   board: {
     tileShape: 'square',
-    tileBorderRadius: 4,
-    tileBorder: '2px solid rgba(112, 128, 144, 0.5)',
-    tileShadow: '0 3px 8px rgba(0, 0, 0, 0.4)',
-    tileHoverShadow: '0 5px 16px rgba(210, 105, 30, 0.5)',
+    tileBorderRadius: 8,
+    tileBorder: '2px solid rgba(90, 124, 149, 0.4)',
+    tileShadow: '0 3px 8px rgba(0, 0, 0, 0.3)',
+    tileHoverShadow: '0 5px 16px rgba(59, 107, 138, 0.5)',
     tileActiveScale: 0.94,
-    boardBackground: 'rgba(60, 30, 10, 0.6)',
-    boardBorder: '4px solid rgba(139, 69, 19, 0.7)',
-    boardBorderRadius: 6,
-    boardShadow: '0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(222, 184, 135, 0.1)',
+    boardBackground: 'rgba(30, 45, 61, 0.6)',
+    boardBorder: '3px solid rgba(90, 124, 149, 0.5)',
+    boardBorderRadius: 12,
+    boardShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
     patternOverlay: 'woodgrain',
     gapSize: 3,
   },
 
   ui: {
-    buttonBackground: 'linear-gradient(135deg, #708090 0%, #4A5568 100%)',
-    buttonText: '#F5F0E8',
-    buttonBorderRadius: 6,
-    buttonShadow: '0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.1)',
-    buttonHoverBackground: 'linear-gradient(135deg, #8B4513 0%, #D2691E 100%)',
+    buttonBackground: 'linear-gradient(135deg, #3B6B8A 0%, #2B5070 100%)',
+    buttonText: '#F0EDE8',
+    buttonBorderRadius: 10,
+    buttonShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+    buttonHoverBackground: 'linear-gradient(135deg, #4A7A9A 0%, #3B6B8A 100%)',
     buttonShape: 'riveted',
     borderStyle: 'metal',
     borderImage: 'url(assets/metal-border.png)',
-    headerBackground: 'rgba(139, 69, 19, 0.7)',
+    headerBackground: 'rgba(59, 107, 138, 0.7)',
     scoreBackground: 'rgba(112, 128, 144, 0.5)',
     modalBackground: 'rgba(44, 26, 14, 0.95)',
     modalBorder: '3px solid #708090',

@@ -109,6 +109,7 @@ class App {
     // Audio — must be called after a user interaction, but we set it up early
     // and trust the first tap on the welcome screen to unlock it
     this.audio.init();
+    if (this.audio.setGender) this.audio.setGender(this.state.profile.gender || 'wife');
     if (this.state.settings.musicVolume != null) {
       this.audio.setMusicVolume(this.state.settings.musicVolume);
     }
@@ -167,6 +168,9 @@ class App {
     for (const [prop, value] of Object.entries(vars)) {
       root.style.setProperty(prop, value);
     }
+    // Set data-theme attribute for styles.css theme switching
+    const gender = this.state.profile.gender || 'wife';
+    document.documentElement.setAttribute('data-theme', gender);
   }
 
   // ================================================================
@@ -356,6 +360,7 @@ class App {
 
     this.themeManager.setTheme(this.state.profile.theme);
     this._applyThemeCSS();
+    if (this.audio.setGender) this.audio.setGender(this.state.profile.gender);
 
     // Create spouse profile
     try {
@@ -1484,7 +1489,11 @@ class App {
 // =====================================================================
 
 const app = new App();
-window.addEventListener('DOMContentLoaded', () => app.init());
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', () => app.init());
+} else {
+  app.init();
+}
 
 export default app;
 export { App };

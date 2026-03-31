@@ -749,30 +749,56 @@ class MusicGenerator {
 }
 
 
-// ─── MP3 Music Player with Crossfade ────────────────────────────────
+// ─── MP3 Music Player with Crossfade & Gender Themes ─────────────────
 
-const MUSIC_TRACKS = [
-  { id: 'track-01', file: 'music/track-01.mp3', label: 'Track 1' },
-  { id: 'track-02', file: 'music/track-02.mp3', label: 'Track 2' },
-  { id: 'track-03', file: 'music/track-03.mp3', label: 'Track 3' },
-  { id: 'track-04', file: 'music/track-04.mp3', label: 'Track 4' },
-  { id: 'track-05', file: 'music/track-05.mp3', label: 'Track 5' },
-  { id: 'track-06', file: 'music/track-06.mp3', label: 'Track 6' },
-  { id: 'track-07', file: 'music/track-07.mp3', label: 'Track 7' },
-  { id: 'track-08', file: 'music/track-08.mp3', label: 'Track 8' },
-  { id: 'track-09', file: 'music/track-09.mp3', label: 'Track 9' },
-  { id: 'track-10', file: 'music/track-10.mp3', label: 'Track 10' },
+// Wife: 10 tracks (2 per screen type)
+const WIFE_TRACKS = [
+  { id: 'w-lobby-1',  file: 'music/wife/lobby-1.mp3',  label: 'Our Place',             screen: 'lobby' },
+  { id: 'w-lobby-2',  file: 'music/wife/lobby-2.mp3',  label: 'Welcome Home',           screen: 'lobby' },
+  { id: 'w-game-1',   file: 'music/wife/game-1.mp3',   label: 'Piece by Piece',         screen: 'game' },
+  { id: 'w-game-2',   file: 'music/wife/game-2.mp3',   label: 'Sweet Puzzles',          screen: 'game' },
+  { id: 'w-bible-1',  file: 'music/wife/bible-1.mp3',  label: 'Morning Light',          screen: 'bible' },
+  { id: 'w-bible-2',  file: 'music/wife/bible-2.mp3',  label: 'Still Waters',           screen: 'bible' },
+  { id: 'w-notes-1',  file: 'music/wife/notes-1.mp3',  label: 'Candlelight Whispers',   screen: 'notes' },
+  { id: 'w-notes-2',  file: 'music/wife/notes-2.mp3',  label: 'Written in Love',        screen: 'notes' },
+  { id: 'w-quiz-1',   file: 'music/wife/quiz-1.mp3',   label: 'Playful Hearts',         screen: 'quiz' },
+  { id: 'w-quiz-2',   file: 'music/wife/quiz-2.mp3',   label: 'Two of a Kind',          screen: 'quiz' },
 ];
 
-const SCREEN_MUSIC_DEFAULTS = {
-  mainMenu:   'track-01',
-  levelMap:   'track-02',
-  gameplay:   'track-03',
-  bible:      'track-04',
-  loveNotes:  'track-05',
-  quizzes:    'track-06',
-  us:         'track-07',
-  settings:   'track-08',
+// Husband: 20 tracks (4 per screen type)
+const HUSBAND_TRACKS = [
+  { id: 'h-lobby-1',  file: 'music/husband/lobby-1.mp3',  label: 'Easy Evening 1',      screen: 'lobby' },
+  { id: 'h-lobby-2',  file: 'music/husband/lobby-2.mp3',  label: 'Easy Evening 2',      screen: 'lobby' },
+  { id: 'h-lobby-3',  file: 'music/husband/lobby-3.mp3',  label: 'The Lounge 1',        screen: 'lobby' },
+  { id: 'h-lobby-4',  file: 'music/husband/lobby-4.mp3',  label: 'The Lounge 2',        screen: 'lobby' },
+  { id: 'h-game-1',   file: 'music/husband/game-1.mp3',   label: 'Late Night Level 1',  screen: 'game' },
+  { id: 'h-game-2',   file: 'music/husband/game-2.mp3',   label: 'Late Night Level 2',  screen: 'game' },
+  { id: 'h-game-3',   file: 'music/husband/game-3.mp3',   label: 'Smooth Moves 1',      screen: 'game' },
+  { id: 'h-game-4',   file: 'music/husband/game-4.mp3',   label: 'Smooth Moves 2',      screen: 'game' },
+  { id: 'h-bible-1',  file: 'music/husband/bible-1.mp3',  label: 'First Light 1',       screen: 'bible' },
+  { id: 'h-bible-2',  file: 'music/husband/bible-2.mp3',  label: 'First Light 2',       screen: 'bible' },
+  { id: 'h-bible-3',  file: 'music/husband/bible-3.mp3',  label: 'Quiet Strength 1',    screen: 'bible' },
+  { id: 'h-bible-4',  file: 'music/husband/bible-4.mp3',  label: 'Quiet Strength 2',    screen: 'bible' },
+  { id: 'h-notes-1',  file: 'music/husband/notes-1.mp3',  label: 'Midnight Ink 1',      screen: 'notes' },
+  { id: 'h-notes-2',  file: 'music/husband/notes-2.mp3',  label: 'Midnight Ink 2',      screen: 'notes' },
+  { id: 'h-notes-3',  file: 'music/husband/notes-3.mp3',  label: 'Something Real 1',    screen: 'notes' },
+  { id: 'h-notes-4',  file: 'music/husband/notes-4.mp3',  label: 'Something Real 2',    screen: 'notes' },
+  { id: 'h-quiz-1',   file: 'music/husband/quiz-1.mp3',   label: 'Friendly Wager 1',    screen: 'quiz' },
+  { id: 'h-quiz-2',   file: 'music/husband/quiz-2.mp3',   label: 'Friendly Wager 2',    screen: 'quiz' },
+  { id: 'h-quiz-3',   file: 'music/husband/quiz-3.mp3',   label: 'Know You Better 1',   screen: 'quiz' },
+  { id: 'h-quiz-4',   file: 'music/husband/quiz-4.mp3',   label: 'Know You Better 2',   screen: 'quiz' },
+];
+
+// Map app screen names → track screen categories
+const SCREEN_TO_CATEGORY = {
+  mainMenu:   'lobby',
+  levelMap:   'lobby',
+  gameplay:   'game',
+  bible:      'bible',
+  loveNotes:  'notes',
+  quizzes:    'quiz',
+  us:         'lobby',
+  settings:   'lobby',
 };
 
 const CROSSFADE_MS = 2000; // 2-second crossfade
@@ -783,19 +809,29 @@ class Mp3MusicPlayer {
     this._currentTrackId = null;
     this._volume = 0.4;
     this._muted = false;
-    this._screenMap = { ...SCREEN_MUSIC_DEFAULTS };
+    this._gender = 'wife';          // 'wife' or 'husband'
+    this._tracks = WIFE_TRACKS;
     this._fadeInterval = null;
-
-    // Load saved screen-to-track mapping
-    try {
-      const saved = localStorage.getItem('lovematch_music_map');
-      if (saved) Object.assign(this._screenMap, JSON.parse(saved));
-    } catch {}
+    this._lastScreenCategory = null; // track which category was last picked for rotation
+    this._categoryIndex = {};        // category -> next index for round-robin
   }
 
-  /** Preload all tracks */
+  /** Set gender theme — switches entire track library */
+  setGender(gender) {
+    const newGender = (gender === 'husband') ? 'husband' : 'wife';
+    if (newGender === this._gender && this._tracks.length > 0) return;
+    this._gender = newGender;
+    this._tracks = (newGender === 'husband') ? HUSBAND_TRACKS : WIFE_TRACKS;
+    this._categoryIndex = {};
+    // Reload audio elements for new tracks
+    this.stop();
+    this._audios.clear();
+    this.preload();
+  }
+
+  /** Preload all tracks for current gender */
   preload() {
-    for (const track of MUSIC_TRACKS) {
+    for (const track of this._tracks) {
       if (!this._audios.has(track.id)) {
         const audio = new Audio(track.file);
         audio.loop = true;
@@ -806,27 +842,27 @@ class Mp3MusicPlayer {
     }
   }
 
-  /** Get current screen → track mapping */
-  getScreenMap() { return { ...this._screenMap }; }
-
-  /** Set which track plays on a given screen */
-  setScreenTrack(screen, trackId) {
-    this._screenMap[screen] = trackId;
-    try {
-      localStorage.setItem('lovematch_music_map', JSON.stringify(this._screenMap));
-    } catch {}
-  }
-
-  /** Get all available tracks */
-  getTracks() { return MUSIC_TRACKS; }
+  /** Get all available tracks for current gender */
+  getTracks() { return this._tracks; }
 
   /** Get all screen names */
-  getScreenNames() { return Object.keys(SCREEN_MUSIC_DEFAULTS); }
+  getScreenNames() { return Object.keys(SCREEN_TO_CATEGORY); }
+
+  /** Pick a random track for a screen category (round-robin) */
+  _pickTrackForCategory(category) {
+    const candidates = this._tracks.filter(t => t.screen === category);
+    if (candidates.length === 0) return null;
+    // Round-robin through available tracks
+    const idx = (this._categoryIndex[category] || 0) % candidates.length;
+    this._categoryIndex[category] = idx + 1;
+    return candidates[idx].id;
+  }
 
   /** Play the track assigned to a screen, with crossfade */
   playForScreen(screenName) {
-    const trackId = this._screenMap[screenName];
-    if (!trackId || trackId === 'none') {
+    const category = SCREEN_TO_CATEGORY[screenName] || 'lobby';
+    const trackId = this._pickTrackForCategory(category);
+    if (!trackId) {
       this.stop();
       return;
     }
@@ -972,6 +1008,14 @@ export class AudioManager {
     this.mp3Player.preload();
     this.mp3Player.setVolume(this._musicVolume);
     this._initialized = true;
+  }
+
+  /**
+   * Set the gender theme for music selection.
+   * @param {'wife'|'husband'} gender
+   */
+  setGender(gender) {
+    this.mp3Player.setGender(gender);
   }
 
   /**

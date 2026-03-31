@@ -1056,13 +1056,14 @@ const BASE_STYLES = `
 }
 
 .lm-btn--primary {
-  background: linear-gradient(135deg, #e8457c, #f06292);
+  background: var(--button-gradient, linear-gradient(135deg, #e8457c, #f06292));
   color: #fff;
-  box-shadow: 0 4px 14px rgba(228,69,124,0.35);
+  box-shadow: var(--shadow, 0 4px 14px rgba(228,69,124,0.35));
 }
 
 .lm-btn--primary:hover {
-  box-shadow: 0 6px 20px rgba(228,69,124,0.5);
+  background: var(--button-hover, linear-gradient(135deg, #f06292, #e8457c));
+  box-shadow: var(--shadow-lg, 0 6px 20px rgba(228,69,124,0.5));
 }
 
 .lm-btn--secondary {
@@ -1071,9 +1072,10 @@ const BASE_STYLES = `
 }
 
 .lm-btn--love {
-  background: linear-gradient(135deg, #ff6b9d, #c767dc);
+  background: var(--button-gradient, linear-gradient(135deg, #ff6b9d, #c767dc));
   color: #fff;
-  box-shadow: 0 4px 14px rgba(199,103,220,0.35);
+  box-shadow: var(--shadow, 0 4px 14px rgba(199,103,220,0.35));
+  opacity: 0.85;
 }
 
 .lm-btn--danger {
@@ -1301,7 +1303,7 @@ const BASE_STYLES = `
 }
 
 .lm-welcome--wife { background: linear-gradient(160deg, #fce4ec, #f8bbd0, #f3e5f5); }
-.lm-welcome--husband { background: linear-gradient(160deg, #e3f2fd, #bbdefb, #e8eaf6); }
+.lm-welcome--husband { background: linear-gradient(160deg, #E8EEF2, #C5D8E6, #D1DDE5); }
 
 .lm-welcome__bg {
   position: absolute;
@@ -1421,7 +1423,7 @@ const BASE_STYLES = `
 
 /* ---- Main Menu ---- */
 .lm-main-menu {
-  background: #fff;
+  background: var(--card-bg, #fff);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -1437,7 +1439,7 @@ const BASE_STYLES = `
 .lm-main-menu__title {
   font-size: 24px;
   margin: 0;
-  color: #c2185b;
+  color: var(--primary-dark, #c2185b);
 }
 
 .lm-main-menu__spouse-bar {
@@ -1530,7 +1532,7 @@ const BASE_STYLES = `
 
 /* ---- Level Map ---- */
 .lm-level-map {
-  background: linear-gradient(180deg, #e3f2fd, #f3e5f5, #fce4ec);
+  background: linear-gradient(180deg, var(--bg-start, #e3f2fd), var(--bg-end, #fce4ec));
   display: flex;
   flex-direction: column;
 }
@@ -2059,7 +2061,7 @@ const BASE_STYLES = `
   align-items: center;
   gap: 10px;
   padding: 14px;
-  background: linear-gradient(135deg, #fce4ec, #f3e5f5);
+  background: linear-gradient(135deg, var(--bg-start, #fce4ec), var(--bg-end, #f3e5f5));
   position: sticky;
   top: 0;
   z-index: 2;
@@ -2180,7 +2182,7 @@ const BASE_STYLES = `
 
 /* ---- Spouse Dashboard ---- */
 .lm-spouse-dash {
-  background: linear-gradient(180deg, #fce4ec, #fff);
+  background: linear-gradient(180deg, var(--bg-start, #fce4ec), #fff);
   display: flex;
   flex-direction: column;
 }
@@ -2299,9 +2301,9 @@ const BASE_STYLES = `
 .lm-spouse-dash__connect {
   margin: 0 16px 16px;
   padding: 16px;
-  background: linear-gradient(135deg, #fce4ec, #fff);
+  background: linear-gradient(135deg, var(--bg-start, #fce4ec), #fff);
   border-radius: 16px;
-  border: 1px solid #f8bbd0;
+  border: 1px solid var(--card-border, #f8bbd0);
 }
 .lm-spouse-dash__conn-status {
   display: flex; align-items: center; gap: 8px;
@@ -2341,12 +2343,12 @@ const BASE_STYLES = `
   font-size: 14px; background: #fff;
   outline: none; transition: border-color 0.2s;
 }
-.lm-input:focus { border-color: #e91e63; }
+.lm-input:focus { border-color: var(--primary, #e91e63); }
 .lm-spouse-dash__token-help {
   font-size: 11px; color: #999; margin: 6px 0 0;
 }
 .lm-spouse-dash__token-help a {
-  color: #e91e63; text-decoration: underline;
+  color: var(--primary, #e91e63); text-decoration: underline;
 }
 .lm-spouse-dash__conn-btns {
   display: flex; gap: 8px; margin-bottom: 14px;
@@ -2359,8 +2361,8 @@ const BASE_STYLES = `
   margin-bottom: 8px;
 }
 .lm-btn--outline {
-  background: transparent; border: 1.5px solid #e91e63;
-  color: #e91e63;
+  background: transparent; border: 1.5px solid var(--primary, #e91e63);
+  color: var(--primary, #e91e63);
 }
 `;
 
