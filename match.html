@@ -154,18 +154,18 @@ const LEVEL_PROGRESSION = [
   // lvl 6:  5 gems, 7x7, introduce obstacles
   { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 85,  target: 4500,
     intro: 'Watch out! Obstacles block your path. Clear tiles next to them to break them.' },
-  // lvl 7:  5 gems, 7x7 diamond shape, introduce tool combos
+  // lvl 7:  5 gems, 7x7 diamond shape, introduce Magic Wand
   { gems: 5, cols: 7, rows: 7, boardPct: 0.85, time: 85, target: 5400,
-    intro: 'Tap two different tools in your toolbar to combine them for powerful effects!' },
-  // lvl 8:  5 gems, 8x7, introduce cross/plus → Rainbow Star
+    intro: 'New tool: Magic Wand! Tap it to remove any single tile. Great for tricky spots.' },
+  // lvl 8:  5 gems, 8x7, introduce Magnet
   { gems: 5, cols: 8, rows: 7, boardPct: 1.0, time: 85,  target: 6000,
-    intro: 'Match a cross/plus shape to also create a Rainbow Star!' },
-  // lvl 9:  6 gems, 8x8 diamond, more gem variety
+    intro: 'New tool: Magnet! It pulls all tiles of one type to the bottom for easy matching.' },
+  // lvl 9:  6 gems, 8x8 diamond, introduce Cloud/Shuffle
   { gems: 6, cols: 8, rows: 8, boardPct: 0.85, time: 90, target: 7500,
-    intro: 'A new gem appears! More variety means more strategy.' },
-  // lvl 10: 6 gems, 8x8 corners-cut, milestone level
+    intro: 'New gem and new tool: Pink Cloud! Tap it to shuffle the entire board.' },
+  // lvl 10: 6 gems, 8x8 corners-cut, introduce Treasure Chest
   { gems: 6, cols: 8, rows: 8, boardPct: 0.90, time: 90, target: 9000,
-    intro: 'Level 10! Use everything you have learned. Chain combos for big points!' },
+    intro: 'Level 10! New tool: Treasure Chest — open it for coins or a surprise power-up!' },
 
   // ── Challenge Arc (levels 11-15): Full board, harder goals ──
   // lvl 11: 6 gems, 8x8 full, introduce Stopwatch tip
@@ -174,15 +174,15 @@ const LEVEL_PROGRESSION = [
   // lvl 12: 6 gems, 8x8 cross shape, tighter time
   { gems: 6, cols: 8, rows: 8, boardPct: 0.80, time: 80, target: 11400,
     intro: 'The board has a tricky shape. Plan your moves carefully!' },
-  // lvl 13: 7 gems, 8x8 full, max gem types
+  // lvl 13: 7 gems, 8x8 full, introduce Slingshot
   { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 85,  target: 12600,
-    intro: 'All gem types are in play now! Look for matches everywhere.' },
+    intro: 'All gems unlocked! New tool: Slingshot — clears an entire diagonal line.' },
   // lvl 14: 7 gems, 8x8 diamond, heavy obstacles
   { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 85, target: 14400,
     intro: 'More obstacles than ever. Use Bombs and Lightning to break through!' },
-  // lvl 15: 7 gems, 8x8 full, high target
+  // lvl 15: 7 gems, 8x8 full, introduce Love Letter
   { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 16500,
-    intro: 'Halfway there! Chain reactions and combos are the key to big scores.' },
+    intro: 'New ultimate tool: Love Letter! It clears the ENTIRE board in a burst of hearts!' },
 
   // ── Mastery Arc (levels 16-20): Expert play ──
   // lvl 16: 7 gems, 8x8 corners-cut, tight timer
@@ -359,9 +359,7 @@ function setupLevel(lvl) {
 }
 
 const SCORE_3 = 50, SCORE_4 = 100, SCORE_5 = 200;
-const LEVEL_TIME = 90; // seconds per level
 const STOPWATCH_BONUS = 15; // seconds added by stopwatch tool
-const STAR_THRESHOLDS = [500, 1500, 3000]; // 1, 2, 3 stars
 
 // Animation durations (ms)
 const SWAP_DUR = 200;
@@ -431,7 +429,7 @@ function loadProgress() {
 let grid = [];       // grid[row][col] = type index or -1
 let special = [];    // special[row][col] = tool number (1-3) or 0 (normal gem)
 let score = 0;
-let timeLeft = LEVEL_TIME; // countdown timer in seconds
+let timeLeft = 60; // countdown timer — overridden by setupLevel()
 let level = loadProgress();
 let selected = null; // {row, col}
 let gameOver = false;
