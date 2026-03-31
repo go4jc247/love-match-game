@@ -1261,18 +1261,53 @@ class App {
       const name = this.state.profile.name || '';
       const channelCode = await this.gistSync.createChannel(token, role, name);
 
-      // Show the code to the user so they can share it
-      const codeDisplay = prompt(
-        'Share this Channel Code with your spouse!\n\nThey will enter it on their phone to connect.\n\nChannel Code:',
-        channelCode
-      );
+      // Show channel code in a persistent overlay so it can be copied
+      this._showChannelCodeOverlay(channelCode);
 
-      this.ui.showToast('Channel created! Share the code with your spouse.', 'success');
+      this.ui.showToast('Channel created!', 'success');
       this._startGistPolling();
-      this.showSpouseDashboard(); // Refresh the UI
     } catch (err) {
       this.ui.showToast('Failed: ' + err.message, 'error');
     }
+  }
+
+  _showChannelCodeOverlay(code) {
+    // Remove any existing overlay
+    document.getElementById('channel-code-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'channel-code-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:20px;padding:24px;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <h2 style="margin:0 0 8px;font-size:20px;color:#333;">Channel Created!</h2>
+        <p style="font-size:14px;color:#666;margin:0 0 16px;">Send this code to your spouse. They enter it on their phone to connect.</p>
+        <div id="channel-code-text" style="background:#f5f5f5;border:2px dashed #ccc;border-radius:10px;padding:14px;font-family:monospace;font-size:13px;word-break:break-all;color:#333;margin:0 0 12px;">${code}</div>
+        <button id="channel-code-copy" style="background:linear-gradient(135deg,var(--primary,#e84393),var(--primary-dark,#c2185b));color:#fff;border:none;border-radius:25px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;margin:0 0 8px;">Copy Code</button>
+        <br/>
+        <button id="channel-code-done" style="background:none;border:none;color:#999;font-size:14px;cursor:pointer;padding:8px;">Done</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('channel-code-copy').onclick = () => {
+      navigator.clipboard.writeText(code).then(() => {
+        document.getElementById('channel-code-copy').textContent = 'Copied!';
+        this.ui.showToast('Code copied to clipboard!', 'success');
+      }).catch(() => {
+        // Fallback: select the text
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById('channel-code-text'));
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        this.ui.showToast('Select and copy the code above', 'info');
+      });
+    };
+
+    document.getElementById('channel-code-done').onclick = () => {
+      overlay.remove();
+      this.showSpouseDashboard();
+    };
   }
 
   async _onJoinChannel(token, channelCode) {
@@ -1280,7 +1315,9 @@ class App {
       this.ui.showToast('Joining channel...', 'info');
       const role = this.state.profile.gender || 'wife';
       const name = this.state.profile.name || '';
+      console.log('[Sync] Joining as', role, 'with channel', channelCode.slice(0, 8) + '...');
       await this.gistSync.joinChannel(token, channelCode, role, name);
+      console.log('[Sync] Joined successfully!');
 
       this.ui.showToast('Connected to your spouse!', 'success');
       this._startGistPolling();
