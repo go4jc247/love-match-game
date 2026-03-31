@@ -28,9 +28,123 @@ canvas {
   width: 100%;
   touch-action: none;
 }
+
+/* ── Splash Screen ── */
+#splash {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: linear-gradient(150deg, #fce4ec 0%, #f8bbd0 25%, #f48fb1 50%, #ec407a 80%, #d81b60 100%);
+  overflow: hidden;
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+#splash.hide {
+  opacity: 0;
+  transform: scale(1.1);
+  pointer-events: none;
+}
+
+/* Floating hearts background */
+.splash-heart {
+  position: absolute;
+  font-size: 24px;
+  opacity: 0.25;
+  animation: splashFloat linear infinite;
+  pointer-events: none;
+}
+@keyframes splashFloat {
+  0%   { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.3; }
+  50%  { opacity: 0.15; }
+  100% { transform: translateY(-110vh) rotate(360deg) scale(0.4); opacity: 0; }
+}
+
+/* Sparkle dots */
+.splash-sparkle {
+  position: absolute;
+  width: 4px; height: 4px;
+  background: #fff;
+  border-radius: 50%;
+  animation: sparkleFloat 3s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes sparkleFloat {
+  0%, 100% { opacity: 0; transform: scale(0); }
+  50%      { opacity: 0.8; transform: scale(1); }
+}
+
+/* Icon */
+.splash-icon {
+  width: 160px; height: 160px;
+  border-radius: 36px;
+  box-shadow: 0 12px 50px rgba(136,14,79,0.35), 0 0 80px rgba(255,105,180,0.3);
+  animation: splashBounce 2s ease-in-out infinite;
+  position: relative; z-index: 2;
+}
+@keyframes splashBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-12px) scale(1.04); }
+}
+
+/* Title */
+.splash-title {
+  font-size: 38px;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 20px;
+  text-shadow: 0 3px 12px rgba(136,14,79,0.4), 0 0 40px rgba(255,255,255,0.2);
+  letter-spacing: 1px;
+  position: relative; z-index: 2;
+}
+.splash-subtitle {
+  font-size: 15px;
+  color: rgba(255,255,255,0.85);
+  margin-top: 6px;
+  font-weight: 500;
+  text-shadow: 0 1px 6px rgba(136,14,79,0.3);
+  position: relative; z-index: 2;
+}
+
+/* Tap to play */
+.splash-tap {
+  margin-top: 40px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  animation: tapPulse 1.8s ease-in-out infinite;
+  position: relative; z-index: 2;
+  text-shadow: 0 2px 8px rgba(136,14,79,0.3);
+}
+@keyframes tapPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.06); }
+}
+
+/* Level badge */
+.splash-level {
+  margin-top: 12px;
+  padding: 6px 20px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 20px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  position: relative; z-index: 2;
+}
 </style>
 </head>
 <body>
+
+<!-- Splash Screen -->
+<div id="splash">
+  <img class="splash-icon" src="icons/pwa-icon-512.png" alt="Love Match">
+  <div class="splash-title">Love Match</div>
+  <div class="splash-subtitle">A Game for Two Hearts</div>
+  <div class="splash-level" id="splash-level"></div>
+  <div class="splash-tap">Tap to Play</div>
+</div>
+
 <canvas id="game"></canvas>
 <script>
 'use strict';
@@ -3560,6 +3674,60 @@ function render(time, dt) {
   drawToolbar();
 }
 
+// ── Splash Screen ──
+let splashDismissed = false;
+
+function initSplash() {
+  const splash = document.getElementById('splash');
+  if (!splash) return;
+
+  // Show current level
+  const lvlBadge = document.getElementById('splash-level');
+  if (lvlBadge) {
+    lvlBadge.textContent = level === 1 ? 'New Game' : 'Level ' + level;
+  }
+
+  // Spawn floating hearts
+  const hearts = ['💖', '💕', '🐱', '💗', '✨', '🌸', '💝', '🎀', '💘'];
+  for (let i = 0; i < 18; i++) {
+    const el = document.createElement('div');
+    el.className = 'splash-heart';
+    el.textContent = hearts[i % hearts.length];
+    el.style.left = (Math.random() * 100) + '%';
+    el.style.fontSize = (14 + Math.random() * 20) + 'px';
+    el.style.animationDuration = (6 + Math.random() * 8) + 's';
+    el.style.animationDelay = (Math.random() * 6) + 's';
+    splash.appendChild(el);
+  }
+
+  // Spawn sparkle dots
+  for (let i = 0; i < 25; i++) {
+    const el = document.createElement('div');
+    el.className = 'splash-sparkle';
+    el.style.left = (Math.random() * 100) + '%';
+    el.style.top = (Math.random() * 100) + '%';
+    el.style.width = el.style.height = (2 + Math.random() * 4) + 'px';
+    el.style.animationDelay = (Math.random() * 3) + 's';
+    el.style.animationDuration = (2 + Math.random() * 2) + 's';
+    splash.appendChild(el);
+  }
+
+  // Dismiss on tap/click
+  function dismissSplash() {
+    if (splashDismissed) return;
+    splashDismissed = true;
+    splash.classList.add('hide');
+    // Initialize audio context on user gesture
+    getAudio();
+    sfxSwap();
+    setTimeout(() => {
+      splash.remove();
+    }, 900);
+  }
+  splash.addEventListener('pointerdown', dismissSplash);
+  splash.addEventListener('click', dismissSplash);
+}
+
 // ── Init ──
 function init() {
   setupLevel(level);
@@ -3577,6 +3745,7 @@ function init() {
   function waitForImages() {
     if (imagesLoaded >= totalImages) {
       initGrid();
+      initSplash();
       requestAnimationFrame(frame);
     } else {
       setTimeout(waitForImages, 50);
