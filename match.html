@@ -136,30 +136,35 @@ const DROP_DUR = 250;
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-let W, H, tileSize, boardX, boardY, hudH;
+let W, H, tileSize, boardX, boardY, hudH, toolbarY, toolbarH, toolSlotSize;
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   const maxW = Math.min(480, window.innerWidth);
   const maxH = window.innerHeight;
 
-  // Calculate tile size to fit board
+  // Calculate tile size to fit board + toolbar
   const availW = maxW - 20;  // 10px margin each side
   tileSize = Math.floor(availW / COLS);
 
   hudH = tileSize * 1.6;  // HUD height
+  toolbarH = tileSize * 1.2; // Toolbar height
   const boardH = tileSize * ROWS;
 
   W = tileSize * COLS + 20;
-  H = hudH + boardH + 30; // 30 for bottom padding
+  H = hudH + boardH + toolbarH + 10;
 
   if (H > maxH) {
     const scale = maxH / H;
     tileSize = Math.floor(tileSize * scale);
     hudH = tileSize * 1.6;
+    toolbarH = tileSize * 1.2;
     W = tileSize * COLS + 20;
-    H = hudH + tileSize * ROWS + 30;
+    H = hudH + tileSize * ROWS + toolbarH + 10;
   }
+
+  toolSlotSize = Math.floor(Math.min((W - 20) / 5, toolbarH - 8));
+  toolbarY = hudH + tileSize * ROWS + 4;
 
   canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
@@ -186,6 +191,17 @@ let locked = false;   // prevent input during animations
 let cascadeLevel = 0;
 let scorePopups = [];
 let selectPulse = 0;
+
+// Tool inventory: each tool has a count (start with some for testing)
+let toolInventory = {};
+for (const t of TOOLS) {
+  toolInventory[t.tool] = 2; // start with 2 of each for testing
+}
+
+// Which tool slots to show in the toolbar (5 at a time, scrollable later)
+const TOOLBAR_SLOTS = 5;
+let toolbarPage = 0; // which page of tools (0 = tools 1-5, 1 = tools 6-10)
+let activeTool = null; // tool number if a tool is selected, null otherwise
 
 // Input state
 let pointerDown = null; // {x, y, row, col}
@@ -616,15 +632,59 @@ function restartGame() {
   waitAndInit();
 }
 
+function handleToolbarClick(cx, cy) {
+  // Check page arrows
+  if (TOOLS.length > TOOLBAR_SLOTS) {
+    const arrowSize = toolSlotSize * 0.3;
+    const arrowY = toolbarY + toolbarH / 2;
+    const maxPage = Math.ceil(TOOLS.length / TOOLBAR_SLOTS) - 1;
+
+    // Left arrow
+    if (cx < 14 + arrowSize + 10 && cy > toolbarY && cy < toolbarY + toolbarH && toolbarPage > 0) {
+      toolbarPage--;
+      activeTool = null;
+      return true;
+    }
+    // Right arrow
+    if (cx > W - 14 - arrowSize - 10 && cy > toolbarY && cy < toolbarY + toolbarH && toolbarPage < maxPage) {
+      toolbarPage++;
+      activeTool = null;
+      return true;
+    }
+  }
+
+  // Check tool slots
+  const slots = getToolbarSlots();
+  for (let i = 0; i < slots.length; i++) {
+    const r = getToolSlotRect(i);
+    if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) {
+      const tool = slots[i];
+      const count = toolInventory[tool.tool] || 0;
+      if (count <= 0) return true; // no stock, ignore
+
+      if (activeTool === tool.tool) {
+        activeTool = null; // deselect
+      } else {
+        activeTool = tool.tool; // select
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
+  const pos = getCanvasPos(e);
+
+  // Always check toolbar
+  if (handleToolbarClick(pos.x, pos.y)) return;
+
   if (locked || paused || gameOver) {
-    const pos = getCanvasPos(e);
     if (gameOver) handleRestartClick(pos.x, pos.y);
     if (!gameOver) handlePauseClick(pos.x, pos.y);
     return;
   }
-  const pos = getCanvasPos(e);
   if (handlePauseClick(pos.x, pos.y)) return;
 
   const cell = canvasToGrid(pos.x, pos.y);
@@ -736,31 +796,14 @@ function drawTile(row, col, type, overrides) {
     ctx.translate(-cx, -cy);
   }
 
-  // Background gradient
-  const grad = ctx.createLinearGradient(x, y, x, y + h);
-  grad.addColorStop(0, info.bg1);
-  grad.addColorStop(1, info.bg2);
-
-  drawRoundedRect(x, y, w, h, radius);
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // Subtle inner shadow at top
-  const innerGrad = ctx.createLinearGradient(x, y, x, y + h * 0.3);
-  innerGrad.addColorStop(0, 'rgba(255,255,255,0.35)');
-  innerGrad.addColorStop(1, 'rgba(255,255,255,0)');
-  drawRoundedRect(x, y, w, h, radius);
-  ctx.fillStyle = innerGrad;
-  ctx.fill();
-
-  // Icon image
+  // Icon image (no background - just the gem)
   const cachedImg = imageCache[info.file];
   if (cachedImg) {
-    const imgPad = w * 0.1;
+    const imgPad = w * 0.05;
     ctx.drawImage(cachedImg, x + imgPad, y + imgPad, w - imgPad * 2, h - imgPad * 2);
   } else {
     // Fallback: draw first letter
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#c2185b';
     ctx.font = 'bold ' + (w * 0.4) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1014,6 +1057,105 @@ function frame(now) {
   if (gameOver) drawGameOver();
 }
 
+function getToolbarSlots() {
+  const start = toolbarPage * TOOLBAR_SLOTS;
+  return TOOLS.slice(start, start + TOOLBAR_SLOTS);
+}
+
+function getToolSlotRect(index) {
+  const slots = getToolbarSlots();
+  const totalW = slots.length * toolSlotSize + (slots.length - 1) * 6;
+  const startX = (W - totalW) / 2;
+  return {
+    x: startX + index * (toolSlotSize + 6),
+    y: toolbarY + (toolbarH - toolSlotSize) / 2,
+    w: toolSlotSize,
+    h: toolSlotSize
+  };
+}
+
+function drawToolbar() {
+  // Background bar
+  drawRoundedRect(6, toolbarY, W - 12, toolbarH, 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fill();
+
+  const slots = getToolbarSlots();
+  for (let i = 0; i < slots.length; i++) {
+    const tool = slots[i];
+    const r = getToolSlotRect(i);
+    const count = toolInventory[tool.tool] || 0;
+    const isActive = activeTool === tool.tool;
+
+    // Slot background
+    drawRoundedRect(r.x, r.y, r.w, r.h, 8);
+    if (isActive) {
+      ctx.fillStyle = 'rgba(255, 152, 0, 0.5)';
+      ctx.fill();
+      ctx.strokeStyle = '#ff9800';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else if (count > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.fill();
+    }
+
+    // Tool icon
+    const img = imageCache[tool.file];
+    if (img) {
+      ctx.save();
+      if (count === 0) ctx.globalAlpha = 0.35;
+      const iconPad = r.w * 0.12;
+      ctx.drawImage(img, r.x + iconPad, r.y + iconPad, r.w - iconPad * 2, r.h - iconPad * 2);
+      ctx.restore();
+    }
+
+    // Count badge
+    if (count > 0) {
+      const badgeR = toolSlotSize * 0.18;
+      const bx = r.x + r.w - badgeR - 1;
+      const by = r.y + r.h - badgeR - 1;
+      ctx.beginPath();
+      ctx.arc(bx, by, badgeR, 0, Math.PI * 2);
+      ctx.fillStyle = '#e91e63';
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold ' + (badgeR * 1.2) + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(count, bx, by);
+    }
+  }
+
+  // Page arrows if more than 5 tools
+  if (TOOLS.length > TOOLBAR_SLOTS) {
+    const arrowSize = toolSlotSize * 0.3;
+    const arrowY = toolbarY + toolbarH / 2;
+
+    // Left arrow
+    ctx.fillStyle = toolbarPage > 0 ? '#c2185b' : 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(14, arrowY);
+    ctx.lineTo(14 + arrowSize, arrowY - arrowSize * 0.6);
+    ctx.lineTo(14 + arrowSize, arrowY + arrowSize * 0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right arrow
+    const maxPage = Math.ceil(TOOLS.length / TOOLBAR_SLOTS) - 1;
+    ctx.fillStyle = toolbarPage < maxPage ? '#c2185b' : 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(W - 14, arrowY);
+    ctx.lineTo(W - 14 - arrowSize, arrowY - arrowSize * 0.6);
+    ctx.lineTo(W - 14 - arrowSize, arrowY + arrowSize * 0.6);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 function render(time, dt) {
   // Clear
   ctx.clearRect(0, 0, W, H);
@@ -1054,6 +1196,9 @@ function render(time, dt) {
 
   // Score popups
   drawScorePopups(dt);
+
+  // Toolbar
+  drawToolbar();
 }
 
 // ── Init ──
