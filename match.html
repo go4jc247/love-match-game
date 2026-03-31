@@ -371,12 +371,25 @@ function resize() {
   boardY = hudH;
 }
 
+// ── Save/Load ──
+function saveProgress() {
+  try {
+    localStorage.setItem('lovematch_level', level.toString());
+    localStorage.setItem('lovematch_highLevel', Math.max(level, parseInt(localStorage.getItem('lovematch_highLevel') || '1')).toString());
+  } catch(e) {}
+}
+function loadProgress() {
+  try {
+    return parseInt(localStorage.getItem('lovematch_level') || '1');
+  } catch(e) { return 1; }
+}
+
 // ── Game State ──
 let grid = [];       // grid[row][col] = type index or -1
 let special = [];    // special[row][col] = tool number (1-3) or 0 (normal gem)
 let score = 0;
 let timeLeft = LEVEL_TIME; // countdown timer in seconds
-let level = 1;
+let level = loadProgress();
 let selected = null; // {row, col}
 let gameOver = false;
 let paused = false;
@@ -389,6 +402,11 @@ let tutorialText = '';
 let levelComplete = false;
 let levelCompleteToolQueue = []; // [{row, col, toolNum}] — tools to activate one by one
 let levelCompleteDelay = 0; // timer between tool activations
+
+// Hint system
+let hintTimer = 0;       // seconds since last player action
+let hintCells = null;    // [{row, col}] cells to highlight, or null
+const HINT_DELAY = 5;    // seconds before hint appears
 
 // Animation state
 let animations = [];  // active animations
@@ -564,6 +582,31 @@ function wouldMatch(row, col, type) {
 
 function hasObstacle(r, c) {
   return obstacles[r] && obstacles[r][c] !== null && obstacles[r][c] !== undefined;
+}
+
+// Find a valid swap that creates a match (for hint system)
+function findHintMove() {
+  const dirs = [[0,1],[1,0]]; // right and down
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] < 0 || !boardMask[r] || !boardMask[r][c]) continue;
+      if (hasObstacle(r, c)) continue;
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= ROWS || nc >= COLS) continue;
+        if (grid[nr][nc] < 0 || !boardMask[nr] || !boardMask[nr][nc]) continue;
+        if (hasObstacle(nr, nc)) continue;
+        // Try swap
+        [grid[r][c], grid[nr][nc]] = [grid[nr][nc], grid[r][c]];
+        const matches = findMatches();
+        [grid[r][c], grid[nr][nc]] = [grid[nr][nc], grid[r][c]]; // swap back
+        if (matches.size > 0) {
+          return [{row: r, col: c}, {row: nr, col: nc}];
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function findMatches() {
@@ -2203,6 +2246,7 @@ function restartGame() {
   // Only advance to next level if player completed it
   if (levelComplete) {
     level++;
+    saveProgress();
   }
   // Otherwise retry same level
   setupLevel(level);
@@ -2222,6 +2266,8 @@ function restartGame() {
   heartParticles = [];
   sparkleParticles = [];
   flyingTool = null;
+  hintTimer = 0;
+  hintCells = null;
   screenShake = { x: 0, y: 0, intensity: 0, decay: 0.88 };
   flashAlpha = 0;
   loveLetterPhase = 0;
@@ -2325,6 +2371,10 @@ function handleToolbarClick(cx, cy) {
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   const pos = getCanvasPos(e);
+
+  // Reset hint on any interaction
+  hintTimer = 0;
+  hintCells = null;
 
   // Always check toolbar
   if (handleToolbarClick(pos.x, pos.y)) return;
@@ -2962,6 +3012,14 @@ function frame(now) {
     }
   }
 
+  // Hint timer — show hint after inactivity
+  if (!gameOver && !locked && !levelComplete && !paused) {
+    hintTimer += dt;
+    if (hintTimer >= HINT_DELAY && !hintCells) {
+      hintCells = findHintMove();
+    }
+  }
+
   // Level complete — activate board tools one by one
   if (levelComplete && !locked && levelCompleteToolQueue.length > 0) {
     levelCompleteDelay -= dt;
@@ -3275,6 +3333,23 @@ function render(time, dt) {
   // Selected highlight
   if (selected && !locked) {
     drawSelectedHighlight(selected.row, selected.col, time);
+  }
+
+  // Hint highlight — gentle pulsing glow on hinted cells
+  if (hintCells && !locked && !selected) {
+    const pulse = 0.3 + 0.3 * Math.sin(time * 4);
+    ctx.save();
+    for (const cell of hintCells) {
+      const hx = boardX + cell.col * tileSize + 2;
+      const hy = boardY + cell.row * tileSize + 2;
+      const hw = tileSize - 4;
+      const hh = tileSize - 4;
+      ctx.strokeStyle = `rgba(255, 215, 0, ${pulse})`;
+      ctx.lineWidth = 3;
+      drawRoundedRect(hx, hy, hw, hh, tileSize * 0.15);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Draw obstacles on top of tiles
