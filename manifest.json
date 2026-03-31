@@ -1,0 +1,25 @@
+{
+  "name": "Love Match - A Game for Two Hearts",
+  "short_name": "Love Match",
+  "description": "A romantic match-3 game for couples featuring Bible devotionals, love notes, and marriage enrichment",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFE4E1",
+  "theme_color": "#FF69B4",
+  "categories": ["games", "lifestyle"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23FF69B4'/%3E%3Cstop offset='100%25' stop-color='%23FF1493'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='192' height='192' rx='32' fill='%23FFE4E1'/%3E%3Cpath d='M96 160 C96 160 30 115 30 75 C30 50 50 35 70 35 C82 35 91 42 96 50 C101 42 110 35 122 35 C142 35 162 50 162 75 C162 115 96 160 96 160Z' fill='url(%23g)'/%3E%3Ctext x='96' y='110' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='42' fill='white'%3ELM%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23FF69B4'/%3E%3Cstop offset='100%25' stop-color='%23FF1493'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='80' fill='%23FFE4E1'/%3E%3Cpath d='M256 430 C256 430 75 305 75 195 C75 130 125 90 180 90 C215 90 240 110 256 130 C272 110 297 90 332 90 C387 90 437 130 437 195 C437 305 256 430 256 430Z' fill='url(%23g)'/%3E%3Ctext x='256' y='295' text-anchor='middle' font-family='Arial,sans-serif' font-weight='bold' font-size='112' fill='white'%3ELM%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
