@@ -1,6 +1,7 @@
-const CACHE_NAME = 'love-match-v3';
+const CACHE_NAME = 'love-match-v4';
 
 const ASSETS = [
+  '/index.html',
   '/match.html',
   '/manifest.json',
 ];

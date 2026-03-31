@@ -17,9 +17,13 @@
 
   <title>Love Match - A Game for Two Hearts</title>
 
-  <!-- Favicon: Heart SVG data URI -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💖</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💖</text></svg>">
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/pwa-icon-192.png">
+  <link rel="apple-touch-icon" sizes="1024x1024" href="icons/pwa-icon-1024.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/pwa-icon-192.png">
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -182,5 +186,10 @@
   <!-- App Entry Point (v3 bust) -->
   <script type="module" src="src/app.js?v=3"></script>
 
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
 </body>
 </html>
