@@ -2599,6 +2599,17 @@ canvas.addEventListener('pointerdown', (e) => {
   hintTimer = 0;
   hintCells = null;
 
+  // Spouse panel intercepts all clicks when open
+  if (showSpousePanel) { handleSpousePanelClick(pos.x, pos.y); return; }
+
+  // Check spouse button click (bottom-right of HUD area)
+  const sbSize = tileSize * 0.4;
+  const sbX = W - sbSize - 12, sbY = hudH - sbSize - tileSize * 0.4;
+  if (pos.x >= sbX && pos.x <= sbX + sbSize && pos.y >= sbY && pos.y <= sbY + sbSize) {
+    toggleSpousePanel();
+    return;
+  }
+
   // Always check toolbar
   if (handleToolbarClick(pos.x, pos.y)) return;
 
@@ -3255,7 +3266,8 @@ function frame(now) {
   if (paused) {
     // Still draw but don't update
     render(now / 1000, dt);
-    drawPauseOverlay();
+    if (!showSpousePanel) drawPauseOverlay();
+    drawSpousePanel();
     return;
   }
 
@@ -3415,6 +3427,7 @@ function frame(now) {
   render(now / 1000, dt);
 
   if (gameOver) drawGameOver();
+  drawSpousePanel();
 }
 
 function getUnlockedTools() {
@@ -3760,6 +3773,430 @@ init();
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+// ── Gist Sync Engine (inline for single-file game) ──
+const GIST_API = 'https://api.github.com/gists';
+const SYNC_PREFIX = 'lovematch_gist_';
+
+const gistSync = {
+  token: localStorage.getItem(SYNC_PREFIX + 'token'),
+  gistId: localStorage.getItem(SYNC_PREFIX + 'gist_id'),
+  role: localStorage.getItem(SYNC_PREFIX + 'role'),
+  spouseName: localStorage.getItem(SYNC_PREFIX + 'spouse_name') || '',
+  pollTimer: null,
+  _lastSpouseData: null,
+  onSpouseUpdate: null,
+
+  isConfigured() { return !!(this.token && this.gistId && this.role); },
+
+  _headers() {
+    const h = { 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
+    if (this.token) h['Authorization'] = 'token ' + this.token;
+    return h;
+  },
+
+  _save() {
+    try {
+      localStorage.setItem(SYNC_PREFIX + 'token', this.token || '');
+      localStorage.setItem(SYNC_PREFIX + 'gist_id', this.gistId || '');
+      localStorage.setItem(SYNC_PREFIX + 'role', this.role || '');
+    } catch(e) {}
+  },
+
+  async createChannel(token, role, name) {
+    this.token = token; this.role = role;
+    const myData = this._defaultData(role, name);
+    const files = { 'channel.json': { content: JSON.stringify({ app: 'love-match', createdBy: role, createdAt: new Date().toISOString() }, null, 2) } };
+    files[role + '.json'] = { content: JSON.stringify(myData, null, 2) };
+    const res = await fetch(GIST_API, { method: 'POST', headers: this._headers(), body: JSON.stringify({ description: 'Love Match Sync', public: false, files }) });
+    if (!res.ok) throw new Error('Failed to create channel');
+    const gist = await res.json();
+    this.gistId = gist.id;
+    this._save();
+    return this.gistId;
+  },
+
+  async joinChannel(token, code, role, name) {
+    this.token = token; this.gistId = code; this.role = role;
+    const gist = await this._fetchGist();
+    if (!gist.files['channel.json']) throw new Error('Invalid channel code');
+    const myData = this._defaultData(role, name);
+    await this._updateGist({ [role + '.json']: { content: JSON.stringify(myData, null, 2) } });
+    this._save();
+  },
+
+  async _fetchGist() {
+    const res = await fetch(GIST_API + '/' + this.gistId, { headers: this._headers() });
+    if (!res.ok) throw new Error('Gist fetch failed: ' + res.status);
+    return res.json();
+  },
+
+  async _updateGist(files) {
+    const res = await fetch(GIST_API + '/' + this.gistId, { method: 'PATCH', headers: this._headers(), body: JSON.stringify({ files }) });
+    if (!res.ok) throw new Error('Gist update failed');
+    return res.json();
+  },
+
+  async _readMyData() {
+    const gist = await this._fetchGist();
+    const file = gist.files[this.role + '.json'];
+    if (!file) return this._defaultData(this.role, '');
+    try {
+      let c = file.content;
+      if (file.truncated && file.raw_url) { const r = await fetch(file.raw_url); c = await r.text(); }
+      return JSON.parse(c);
+    } catch { return this._defaultData(this.role, ''); }
+  },
+
+  async pushData(data) {
+    data.updatedAt = new Date().toISOString();
+    data.role = this.role;
+    await this._updateGist({ [this.role + '.json']: { content: JSON.stringify(data, null, 2) } });
+  },
+
+  async pullSpouseData() {
+    if (!this.isConfigured()) return null;
+    const spouseRole = this.role === 'husband' ? 'wife' : 'husband';
+    const gist = await this._fetchGist();
+    const file = gist.files[spouseRole + '.json'];
+    if (!file) return null;
+    try {
+      let c = file.content;
+      if (file.truncated && file.raw_url) { const r = await fetch(file.raw_url); c = await r.text(); }
+      const data = JSON.parse(c);
+      if (data.name) { this.spouseName = data.name; localStorage.setItem(SYNC_PREFIX + 'spouse_name', data.name); }
+      return data;
+    } catch { return null; }
+  },
+
+  async sendLoveNote(message) {
+    const d = await this._readMyData();
+    d.loveNotes = d.loveNotes || [];
+    d.loveNotes.push({ id: Date.now().toString(36), from: this.role, message, sentAt: new Date().toISOString(), read: false });
+    await this.pushData(d);
+  },
+
+  async sendGift(toolName) {
+    const d = await this._readMyData();
+    d.gifts = d.gifts || [];
+    d.gifts.push({ id: Date.now().toString(36), from: this.role, tool: toolName, sentAt: new Date().toISOString(), claimed: false });
+    await this.pushData(d);
+  },
+
+  async sendMessage(text) {
+    const d = await this._readMyData();
+    d.messages = d.messages || [];
+    d.messages.push({ id: Date.now().toString(36), from: this.role, text, sentAt: new Date().toISOString() });
+    if (d.messages.length > 100) d.messages = d.messages.slice(-100);
+    await this.pushData(d);
+  },
+
+  async syncGameProgress() {
+    if (!this.isConfigured()) return;
+    const d = await this._readMyData();
+    d.gameProgress = { level, score, highLevel: parseInt(localStorage.getItem('lovematch_highLevel') || '1') };
+    await this.pushData(d);
+  },
+
+  async getMessages() {
+    const [my, sp] = await Promise.all([this._readMyData(), this.pullSpouseData()]);
+    const all = [...(my?.messages || []), ...(sp?.messages || [])];
+    all.sort((a, b) => new Date(a.sentAt) - new Date(b.sentAt));
+    return all;
+  },
+
+  startPolling(onData) {
+    this.onSpouseUpdate = onData;
+    const poll = async () => {
+      try {
+        const data = await this.pullSpouseData();
+        if (data) {
+          const json = JSON.stringify(data);
+          if (json !== JSON.stringify(this._lastSpouseData)) {
+            this._lastSpouseData = data;
+            if (this.onSpouseUpdate) this.onSpouseUpdate(data);
+          }
+        }
+      } catch(e) { /* silent */ }
+      this.pollTimer = setTimeout(poll, 30000);
+    };
+    if (this.isConfigured()) poll();
+  },
+
+  stopPolling() { if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null; } },
+
+  _defaultData(role, name) {
+    return { type: 'lovematch_sync', version: 1, role, name: name || '', profile: { gender: role }, loveNotes: [], gifts: [], helpRequests: [], messages: [], bibleProgress: {}, gameProgress: { level: 1, score: 0 }, claimedGifts: [], readNotes: [], updatedAt: new Date().toISOString() };
+  },
+
+  disconnect() {
+    this.stopPolling();
+    this.token = this.gistId = this.role = null;
+    [SYNC_PREFIX+'token', SYNC_PREFIX+'gist_id', SYNC_PREFIX+'role', SYNC_PREFIX+'spouse_name'].forEach(k => localStorage.removeItem(k));
+  }
+};
+
+// ── Spouse Panel UI ──
+let showSpousePanel = false;
+let spouseNotifications = []; // [{text, time, type}]
+
+function toggleSpousePanel() {
+  showSpousePanel = !showSpousePanel;
+  if (showSpousePanel) paused = true;
+  else paused = false;
+}
+
+function drawSpousePanel() {
+  if (!showSpousePanel) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, W, H);
+
+  const pw = W * 0.9, ph = H * 0.85;
+  const px = (W - pw) / 2, py = (H - ph) / 2;
+  drawRoundedRect(px, py, pw, ph, 16);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  ctx.fillStyle = '#c2185b';
+  ctx.font = 'bold ' + (tileSize * 0.4) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  if (!gistSync.isConfigured()) {
+    // Setup screen
+    ctx.fillText('Connect with Spouse', W / 2, py + 20);
+    ctx.fillStyle = '#666';
+    ctx.font = (tileSize * 0.22) + 'px sans-serif';
+    ctx.fillText('Tap the buttons below to set up', W / 2, py + 55);
+    ctx.fillText('spouse sync via GitHub Gist', W / 2, py + 75);
+
+    // Create Channel button
+    const btnY1 = py + 110;
+    drawRoundedRect(px + 20, btnY1, pw - 40, 44, 22);
+    const g1 = ctx.createLinearGradient(px+20, btnY1, px+20, btnY1+44);
+    g1.addColorStop(0, '#ff6b8a'); g1.addColorStop(1, '#e91e63');
+    ctx.fillStyle = g1; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + (tileSize * 0.26) + 'px sans-serif';
+    ctx.fillText('Create Channel (Spouse 1)', W / 2, btnY1 + 22);
+
+    // Join Channel button
+    const btnY2 = btnY1 + 60;
+    drawRoundedRect(px + 20, btnY2, pw - 40, 44, 22);
+    const g2 = ctx.createLinearGradient(px+20, btnY2, px+20, btnY2+44);
+    g2.addColorStop(0, '#7c4dff'); g2.addColorStop(1, '#651fff');
+    ctx.fillStyle = g2; ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Join Channel (Spouse 2)', W / 2, btnY2 + 22);
+
+    // Close
+    const closeY = py + ph - 50;
+    ctx.fillStyle = '#999'; ctx.font = (tileSize * 0.24) + 'px sans-serif';
+    ctx.fillText('Tap outside to close', W / 2, closeY);
+  } else {
+    // Connected screen
+    const spName = gistSync.spouseName || (gistSync.role === 'husband' ? 'Wife' : 'Husband');
+    ctx.fillText('Connected: ' + spName, W / 2, py + 20);
+
+    ctx.fillStyle = '#4caf50';
+    ctx.font = (tileSize * 0.22) + 'px sans-serif';
+    ctx.fillText('Channel: ' + (gistSync.gistId || '').slice(0, 8) + '...', W / 2, py + 55);
+    ctx.fillText('You are: ' + gistSync.role, W / 2, py + 75);
+
+    // Send Love Note button
+    const btnY1 = py + 110;
+    drawRoundedRect(px + 20, btnY1, pw - 40, 44, 22);
+    const g1 = ctx.createLinearGradient(px+20, btnY1, px+20, btnY1+44);
+    g1.addColorStop(0, '#ff6b8a'); g1.addColorStop(1, '#e91e63');
+    ctx.fillStyle = g1; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold ' + (tileSize * 0.26) + 'px sans-serif';
+    ctx.fillText('Send Love Note', W / 2, btnY1 + 22);
+
+    // Send Tool Gift button
+    const btnY2 = btnY1 + 56;
+    drawRoundedRect(px + 20, btnY2, pw - 40, 44, 22);
+    const g2 = ctx.createLinearGradient(px+20, btnY2, px+20, btnY2+44);
+    g2.addColorStop(0, '#ff9800'); g2.addColorStop(1, '#f57c00');
+    ctx.fillStyle = g2; ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Send Tool to ' + spName, W / 2, btnY2 + 22);
+
+    // Chat button
+    const btnY3 = btnY2 + 56;
+    drawRoundedRect(px + 20, btnY3, pw - 40, 44, 22);
+    const g3 = ctx.createLinearGradient(px+20, btnY3, px+20, btnY3+44);
+    g3.addColorStop(0, '#7c4dff'); g3.addColorStop(1, '#651fff');
+    ctx.fillStyle = g3; ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Open Chat', W / 2, btnY3 + 22);
+
+    // Spouse progress
+    const spData = gistSync._lastSpouseData;
+    if (spData && spData.gameProgress) {
+      ctx.fillStyle = '#880e4f'; ctx.font = (tileSize * 0.24) + 'px sans-serif';
+      ctx.fillText(spName + ' is on Level ' + (spData.gameProgress.level || 1), W / 2, btnY3 + 70);
+      ctx.fillText('Score: ' + (spData.gameProgress.score || 0).toLocaleString(), W / 2, btnY3 + 95);
+    }
+
+    // Disconnect button
+    const discY = py + ph - 55;
+    ctx.fillStyle = '#999'; ctx.font = (tileSize * 0.2) + 'px sans-serif';
+    ctx.fillText('Tap here to disconnect', W / 2, discY);
+  }
+
+  ctx.restore();
+}
+
+// Handle spouse panel clicks
+function handleSpousePanelClick(cx, cy) {
+  if (!showSpousePanel) return false;
+
+  const pw = W * 0.9, ph = H * 0.85;
+  const px = (W - pw) / 2, py = (H - ph) / 2;
+
+  // Outside panel = close
+  if (cx < px || cx > px + pw || cy < py || cy > py + ph) {
+    showSpousePanel = false;
+    paused = false;
+    return true;
+  }
+
+  if (!gistSync.isConfigured()) {
+    // Create Channel
+    const btnY1 = py + 110;
+    if (cy >= btnY1 && cy <= btnY1 + 44) {
+      const token = prompt('Enter your GitHub Personal Access Token\n(needs "gist" scope):');
+      if (!token) return true;
+      const role = prompt('Are you the Husband or Wife?\n(type: husband or wife)');
+      if (role !== 'husband' && role !== 'wife') { alert('Please enter "husband" or "wife"'); return true; }
+      const name = prompt('Your name:') || role;
+      gistSync.createChannel(token, role, name).then(code => {
+        alert('Channel created! Share this code with your spouse:\n\n' + code);
+        gistSync.startPolling(onSpouseData);
+      }).catch(e => alert('Error: ' + e.message));
+      return true;
+    }
+    // Join Channel
+    const btnY2 = btnY1 + 60;
+    if (cy >= btnY2 && cy <= btnY2 + 44) {
+      const token = prompt('Enter your GitHub Personal Access Token\n(needs "gist" scope):');
+      if (!token) return true;
+      const code = prompt('Enter the Channel Code from your spouse:');
+      if (!code) return true;
+      const role = prompt('Are you the Husband or Wife?\n(type: husband or wife)');
+      if (role !== 'husband' && role !== 'wife') { alert('Please enter "husband" or "wife"'); return true; }
+      const name = prompt('Your name:') || role;
+      gistSync.joinChannel(token, code, role, name).then(() => {
+        alert('Connected! You and your spouse are now synced.');
+        gistSync.startPolling(onSpouseData);
+      }).catch(e => alert('Error: ' + e.message));
+      return true;
+    }
+  } else {
+    // Connected panel buttons
+    const btnY1 = py + 110;
+    // Send Love Note
+    if (cy >= btnY1 && cy <= btnY1 + 44) {
+      const msg = prompt('Write a love note to your spouse:');
+      if (msg) gistSync.sendLoveNote(msg).then(() => {
+        scorePopups.push({ x: W/2, y: H/3, text: 'Note sent!', alpha: 1, dy: 0 });
+      }).catch(e => alert('Error: ' + e.message));
+      return true;
+    }
+    // Send Tool
+    const btnY2 = btnY1 + 56;
+    if (cy >= btnY2 && cy <= btnY2 + 44) {
+      const tools = getUnlockedTools();
+      if (tools.length === 0) { alert('No tools unlocked yet!'); return true; }
+      const toolNames = tools.map((t,i) => (i+1) + '. ' + t.name).join('\n');
+      const pick = prompt('Pick a tool to send:\n' + toolNames);
+      const idx = parseInt(pick) - 1;
+      if (idx >= 0 && idx < tools.length) {
+        gistSync.sendGift(tools[idx].name).then(() => {
+          scorePopups.push({ x: W/2, y: H/3, text: tools[idx].name + ' sent!', alpha: 1, dy: 0 });
+        }).catch(e => alert('Error: ' + e.message));
+      }
+      return true;
+    }
+    // Chat
+    const btnY3 = btnY2 + 56;
+    if (cy >= btnY3 && cy <= btnY3 + 44) {
+      const msg = prompt('Send a message:');
+      if (msg) gistSync.sendMessage(msg).then(() => {
+        scorePopups.push({ x: W/2, y: H/3, text: 'Message sent!', alpha: 1, dy: 0 });
+      });
+      return true;
+    }
+    // Disconnect
+    const discY = py + ph - 55;
+    if (cy >= discY - 10 && cy <= discY + 20) {
+      if (confirm('Disconnect from spouse sync?')) {
+        gistSync.disconnect();
+      }
+      return true;
+    }
+  }
+  return true;
+}
+
+// Spouse data callback
+function onSpouseData(data) {
+  // Check for new unread love notes
+  const notes = (data.loveNotes || []).filter(n => n.from !== gistSync.role);
+  const myRead = gistSync._lastSpouseData?.readNotes || [];
+  const unread = notes.filter(n => !myRead.includes(n.id));
+  if (unread.length > 0) {
+    const latest = unread[unread.length - 1];
+    const from = gistSync.spouseName || 'Spouse';
+    scorePopups.push({ x: W/2, y: H/4, text: from + ': ' + latest.message.slice(0, 30), alpha: 1, dy: 0 });
+    sfxSpecial();
+  }
+
+  // Check for new gifts
+  const gifts = (data.gifts || []).filter(g => g.from !== gistSync.role && !g.claimed);
+  if (gifts.length > 0) {
+    const g = gifts[gifts.length - 1];
+    scorePopups.push({ x: W/2, y: H/3, text: (gistSync.spouseName || 'Spouse') + ' sent you ' + g.tool + '!', alpha: 1, dy: 0 });
+    sfxLevelComplete();
+  }
+}
+
+// Add spouse button to HUD (heart icon in top-left area)
+const _origDrawHUD = drawHUD;
+drawHUD = function() {
+  _origDrawHUD();
+  // Spouse sync button (small heart icon)
+  ctx.save();
+  const sbSize = tileSize * 0.4;
+  const sbX = W - sbSize - 12;
+  const sbY = hudH - sbSize - tileSize * 0.4;
+  ctx.font = (sbSize * 0.9) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(gistSync.isConfigured() ? '💑' : '💌', sbX + sbSize/2, sbY + sbSize/2);
+  if (gistSync.isConfigured()) {
+    // Green dot
+    ctx.beginPath();
+    ctx.arc(sbX + sbSize - 2, sbY + 4, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#4caf50';
+    ctx.fill();
+  }
+  ctx.restore();
+};
+
+// Sync progress after level complete
+const _origRestartGame = restartGame;
+restartGame = function() {
+  _origRestartGame();
+  if (gistSync.isConfigured()) {
+    gistSync.syncGameProgress().catch(() => {});
+  }
+};
+
+// Start polling if configured
+if (gistSync.isConfigured()) {
+  gistSync.startPolling(onSpouseData);
 }
 </script>
 </body>
