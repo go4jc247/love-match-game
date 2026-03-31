@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Love Match">
+<meta name="theme-color" content="#FF69B4">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/pwa-icon-192.png">
 <title>Love Match</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -28,8 +34,8 @@ canvas {
 <script>
 'use strict';
 
-// ── Constants ──
-const COLS = 8, ROWS = 8;
+// ── Grid dimensions (dynamic per level) ──
+let COLS = 8, ROWS = 8;
 
 // All available gems (27 total) - each level picks 7-8 from this pool
 const ALL_GEMS = [
@@ -68,7 +74,7 @@ const TOOLS = [
   { id: 's5-12', file: 'icons/sheet5-icon-12.png', name: 'Lightning', tool: 2, desc: 'Clears row or column' },
   { id: 's5-5', file: 'icons/sheet5-icon-5.png', name: 'Rainbow Star', tool: 3, desc: 'Removes all of one type' },
   { id: 's5-17', file: 'icons/sheet5-icon-17.png', name: 'Magnet', tool: 4, desc: 'Pulls one type to bottom' },
-  { id: 's5-15', file: 'icons/sheet5-icon-15.png', name: 'Stopwatch', tool: 5, desc: 'Freezes moves for 3 turns' },
+  { id: 's5-15', file: 'icons/sheet5-icon-15.png', name: 'Stopwatch', tool: 5, desc: 'Adds 15 seconds' },
   { id: 's5-4', file: 'icons/sheet5-icon-4.png', name: 'Potion', tool: 6, desc: 'Transforms 2x2 to same type' },
   { id: 's5-8', file: 'icons/sheet5-icon-8.png', name: 'Magic Wand', tool: 7, desc: 'Removes any single tile' },
   { id: 's5-7', file: 'icons/sheet5-icon-7.png', name: 'Treasure Chest', tool: 8, desc: 'Reveals coins or power-up' },
@@ -80,9 +86,139 @@ const TOOLS = [
 // Pink Heart icon used for the Love Letter "clear everything" transformation
 const PINK_HEART_FILE = 'icons/sheet5-icon-3.png';
 
-// Pick gems for current level (7 random from pool, seeded by level)
-const GEMS_PER_LEVEL = 7;
+// ── Level Progression ──
+// Each level defines: gems count, board active %, time, score target, and what's new
+const LEVEL_PROGRESSION = [
+  // lvl 1:  3 gems, 5x5 board, learn basic matching
+  { gems: 3, cols: 5, rows: 5, boardPct: 1.0, time: 60,  target: 300,  intro: 'Match 3 in a row to score!' },
+  // lvl 2:  3 gems, 5x6 board, introduce 4-in-a-row → Lightning
+  { gems: 3, cols: 6, rows: 5, boardPct: 1.0, time: 70,  target: 500,  intro: 'Match 4 in a row to create a Lightning Bolt!' },
+  // lvl 3:  4 gems, 6x6 board, introduce 2x2 → Potion
+  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 75,  target: 800,  intro: 'Match a 2×2 square to create a Potion!' },
+  // lvl 4:  4 gems, 6x6 board, introduce L/T shape → Bomb
+  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 80,  target: 1000, intro: 'Match an L or T shape to create a Bomb!' },
+  // lvl 5:  5 gems, 6x7 board, introduce 5-in-a-row → Rainbow Star
+  { gems: 5, cols: 7, rows: 6, boardPct: 1.0, time: 80,  target: 1200, intro: 'Match 5 in a row for a Rainbow Star!' },
+  // lvl 6:  5 gems, 7x7 board, introduce obstacles
+  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 85,  target: 1500, intro: 'Obstacles appear! Clear tiles next to them to break them.' },
+  // lvl 7:  5 gems, 7x7 diamond, introduce tool combos
+  { gems: 5, cols: 7, rows: 7, boardPct: 0.85, time: 85, target: 1800, intro: 'Combine two tools for powerful combos!' },
+  // lvl 8:  6 gems, 7x8 board
+  { gems: 6, cols: 8, rows: 7, boardPct: 1.0, time: 85,  target: 2000, intro: 'New gems appear — more variety, more challenge!' },
+  // lvl 9:  6 gems, 8x8 board, introduce Cross → Rainbow Star
+  { gems: 6, cols: 8, rows: 8, boardPct: 0.85, time: 90, target: 2500, intro: 'Match a cross/plus shape for a Rainbow Star!' },
+  // lvl 10: 6 gems, 8x8 board
+  { gems: 6, cols: 8, rows: 8, boardPct: 0.90, time: 90, target: 3000, intro: 'Level 10 — things are heating up!' },
+  // lvl 11: 7 gems, 8x8 full
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 3500, intro: null },
+  // lvl 12: 7 gems, 8x8 full
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 4000, intro: null },
+  // lvl 13+: 7 gems, 8x8 full board
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 4500, intro: null },
+];
+
+function getLevelConfig(lvl) {
+  const idx = Math.min(lvl - 1, LEVEL_PROGRESSION.length - 1);
+  const cfg = LEVEL_PROGRESSION[idx];
+  // Scale target for levels beyond the table
+  if (lvl > LEVEL_PROGRESSION.length) {
+    return { ...cfg, target: cfg.target + (lvl - LEVEL_PROGRESSION.length) * 500 };
+  }
+  return cfg;
+}
+
+// Board mask: true = active cell, false = voided (no tile)
+let boardMask = [];
+
+// Generate board mask using clean geometric shapes relative to current ROWS/COLS
+function generateBoardMask(pct) {
+  boardMask = [];
+
+  if (pct >= 1.0) {
+    // Full board — most common case
+    for (let r = 0; r < ROWS; r++) {
+      boardMask[r] = [];
+      for (let c = 0; c < COLS; c++) boardMask[r][c] = true;
+    }
+    return;
+  }
+
+  const cr = (ROWS - 1) / 2;
+  const cc = (COLS - 1) / 2;
+
+  // Pick a shape type based on level for variety
+  const shapeType = level % 3; // 0=diamond, 1=corners-cut, 2=cross
+
+  // Calculate radius to achieve target percentage
+  const totalCells = ROWS * COLS;
+  const targetActive = Math.round(totalCells * pct);
+
+  for (let r = 0; r < ROWS; r++) {
+    boardMask[r] = [];
+    for (let c = 0; c < COLS; c++) boardMask[r][c] = false;
+  }
+
+  if (shapeType === 0) {
+    // Diamond shape — vary radius to hit target pct
+    // Binary search for the right manhattan distance
+    let bestRadius = 1;
+    for (let rad = 1; rad <= ROWS + COLS; rad += 0.5) {
+      let count = 0;
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          if (Math.abs(r - cr) + Math.abs(c - cc) <= rad) count++;
+      if (count <= targetActive) bestRadius = rad;
+      else break;
+    }
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        boardMask[r][c] = Math.abs(r - cr) + Math.abs(c - cc) <= bestRadius;
+  } else if (shapeType === 1) {
+    // Rounded rectangle — full board with corners cut
+    // Vary corner cut size to hit target pct
+    let bestCut = 0;
+    for (let cut = 0.5; cut <= Math.max(ROWS, COLS); cut += 0.5) {
+      let count = 0;
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          if (Math.abs(r - cr) + Math.abs(c - cc) <= (cr + cc) - cut + 0.5) count++;
+      if (count >= targetActive) { bestCut = cut; break; }
+    }
+    const maxDist = (cr + cc) - bestCut + 0.5;
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        boardMask[r][c] = Math.abs(r - cr) + Math.abs(c - cc) <= maxDist;
+  } else {
+    // Cross/plus shape
+    const armW = Math.max(2, Math.round(COLS * 0.4));
+    const armH = Math.max(2, Math.round(ROWS * 0.4));
+    const hPad = Math.floor((COLS - armW) / 2);
+    const vPad = Math.floor((ROWS - armH) / 2);
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        boardMask[r][c] = (c >= hPad && c < COLS - hPad) || (r >= vPad && r < ROWS - vPad);
+    // If cross gives too many cells, trim corners
+    let count = 0;
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (boardMask[r][c]) count++;
+    // Trim if needed by removing furthest cells
+    if (count > targetActive * 1.15) {
+      const cells = [];
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          if (boardMask[r][c]) cells.push({ r, c, dist: Math.abs(r - cr) + Math.abs(c - cc) });
+      cells.sort((a, b) => b.dist - a.dist);
+      let toRemove = count - targetActive;
+      for (let i = 0; i < toRemove && i < cells.length; i++)
+        boardMask[cells[i].r][cells[i].c] = false;
+    }
+  }
+}
+
 function pickGemsForLevel(lvl) {
+  const cfg = getLevelConfig(lvl);
+  const numGems = cfg.gems;
   // Deterministic shuffle based on level so same level = same gems
   const shuffled = [...ALL_GEMS];
   let seed = lvl * 2654435761;
@@ -91,7 +227,7 @@ function pickGemsForLevel(lvl) {
     const j = seed % (i + 1);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
-  return shuffled.slice(0, GEMS_PER_LEVEL);
+  return shuffled.slice(0, numGems);
 }
 
 // Current level tile types
@@ -119,14 +255,20 @@ function preloadImages(gems) {
 }
 
 function setupLevel(lvl) {
+  const cfg = getLevelConfig(lvl);
+  COLS = cfg.cols;
+  ROWS = cfg.rows;
   const gems = pickGemsForLevel(lvl);
   TILE_TYPES = gems;
   NUM_TYPES = TILE_TYPES.length;
   preloadImages(gems);
+  generateBoardMask(cfg.boardPct);
+  resize(); // recalculate layout for new grid size
 }
 
 const SCORE_3 = 50, SCORE_4 = 100, SCORE_5 = 200;
-const MAX_MOVES = 30;
+const LEVEL_TIME = 90; // seconds per level
+const STOPWATCH_BONUS = 15; // seconds added by stopwatch tool
 const STAR_THRESHOLDS = [500, 1500, 3000]; // 1, 2, 3 stars
 
 // Animation durations (ms)
@@ -184,11 +326,20 @@ function resize() {
 let grid = [];       // grid[row][col] = type index or -1
 let special = [];    // special[row][col] = tool number (1-3) or 0 (normal gem)
 let score = 0;
-let moves = MAX_MOVES;
+let timeLeft = LEVEL_TIME; // countdown timer in seconds
 let level = 1;
 let selected = null; // {row, col}
 let gameOver = false;
 let paused = false;
+
+// Tutorial/intro overlay state
+let showingTutorial = false;
+let tutorialText = '';
+
+// Level completion state
+let levelComplete = false;
+let levelCompleteToolQueue = []; // [{row, col, toolNum}] — tools to activate one by one
+let levelCompleteDelay = 0; // timer between tool activations
 
 // Animation state
 let animations = [];  // active animations
@@ -267,6 +418,12 @@ function initGrid() {
     special[r] = [];
     obstacles[r] = [];
     for (let c = 0; c < COLS; c++) {
+      if (!boardMask[r] || !boardMask[r][c]) {
+        grid[r][c] = -1;   // voided cell
+        special[r][c] = 0;
+        obstacles[r][c] = null;
+        continue;
+      }
       let type;
       do {
         type = randomType();
@@ -281,8 +438,8 @@ function initGrid() {
 }
 
 function initObstacles() {
-  if (level < 2) return; // no obstacles on level 1
-  const obstacleCount = Math.min(2 + Math.floor(level / 2), 10);
+  if (level < 6) return; // obstacles start at level 6
+  const obstacleCount = Math.min(2 + Math.floor((level - 5) / 2), 10);
   const types = Object.keys(OBSTACLE_TYPES);
   let placed = 0;
   let attempts = 0;
@@ -290,6 +447,7 @@ function initObstacles() {
     attempts++;
     const r = 1 + Math.floor(Math.random() * (ROWS - 2)); // avoid top/bottom edges
     const c = 1 + Math.floor(Math.random() * (COLS - 2));
+    if (!boardMask[r] || !boardMask[r][c]) continue; // skip voided cells
     if (obstacles[r][c]) continue;
     const type = types[Math.floor(Math.random() * types.length)];
     const def = OBSTACLE_TYPES[type];
@@ -629,7 +787,7 @@ function doSwap(r1, c1, r2, c2) {
 
     if (sp1 > 0 || sp2 > 0) {
       // Consume the move
-      if (stopwatchTurns > 0) { stopwatchTurns--; } else { moves--; }
+      // Timer-based: no move decrement needed
 
       // Check for special+special combo
       if (sp1 > 0 && sp2 > 0) {
@@ -662,11 +820,7 @@ function doSwap(r1, c1, r2, c2) {
       special[r2][c2] = tmpSp2;
       animateSwapBack(r1, c1, r2, c2);
     } else {
-      if (stopwatchTurns > 0) {
-        stopwatchTurns--;
-      } else {
-        moves--;
-      }
+      // Timer-based: no move decrement needed
       cascadeLevel = 0;
       lastSwap = { r1, c1, r2, c2 };
       processMatches();
@@ -701,7 +855,7 @@ function processMatches() {
   const groups = getMatchGroups();
   if (groups.length === 0) {
     // Check game over
-    if (moves <= 0) {
+    if (timeLeft <= 0) {
       gameOver = true;
     }
     locked = false;
@@ -759,6 +913,7 @@ function processMatches() {
   }
 
   score += totalScore;
+  checkLevelComplete();
   lastSwap = null; // Only use swap position for the initial match, not cascades
 
   // Impact effects — screen shake, flash, sparkles
@@ -862,6 +1017,28 @@ function damageAdjacentObstacles(clearedCells) {
   }
 }
 
+function checkLevelComplete() {
+  if (levelComplete || gameOver) return;
+  const cfg = getLevelConfig(level);
+  if (score >= cfg.target) {
+    levelComplete = true;
+    // Collect all special tools on the board to activate one by one
+    levelCompleteToolQueue = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (special[r] && special[r][c] > 0) {
+          levelCompleteToolQueue.push({ row: r, col: c, toolNum: special[r][c] });
+        }
+      }
+    }
+    levelCompleteDelay = 0.5; // initial delay before starting tool cascade
+    scorePopups.push({
+      x: W / 2, y: H / 3,
+      text: 'Level Complete!', alpha: 1, dy: 0,
+    });
+  }
+}
+
 function applyGravity() {
   // For each column, find gaps and drop tiles (obstacles are immovable)
   const drops = [];
@@ -871,8 +1048,10 @@ function applyGravity() {
     // Work with segments separated by obstacles
     let writeRow = ROWS - 1;
 
-    // Scan bottom up, obstacles block gravity
+    // Scan bottom up, obstacles and voided cells block gravity
     while (writeRow >= 0) {
+      // Skip voided cells
+      if (boardMask[writeRow] && !boardMask[writeRow][c]) { writeRow--; continue; }
       // Skip obstacle rows
       if (hasObstacle(writeRow, c)) { writeRow--; continue; }
 
@@ -881,12 +1060,14 @@ function applyGravity() {
 
       // Empty cell — find a tile above to drop into it
       let sourceRow = writeRow - 1;
-      while (sourceRow >= 0 && grid[sourceRow][c] < 0 && !hasObstacle(sourceRow, c)) {
+      while (sourceRow >= 0 && grid[sourceRow][c] < 0 && !hasObstacle(sourceRow, c) &&
+             (boardMask[sourceRow] && boardMask[sourceRow][c])) {
         sourceRow--;
       }
 
-      if (sourceRow < 0 || hasObstacle(sourceRow, c)) {
-        // No tile above (or blocked by obstacle) — need new tile
+      if (sourceRow < 0 || hasObstacle(sourceRow, c) ||
+          (boardMask[sourceRow] && !boardMask[sourceRow][c])) {
+        // No tile above (or blocked by obstacle/void) — need new tile
         break;
       }
 
@@ -901,6 +1082,7 @@ function applyGravity() {
 
     // Fill remaining empty spots at top of each segment with new tiles
     for (let r = writeRow; r >= 0; r--) {
+      if (!boardMask[r] || !boardMask[r][c]) continue; // skip voided
       if (hasObstacle(r, c)) continue;
       if (grid[r][c] < 0) {
         const type = randomType();
@@ -1414,14 +1596,13 @@ function useMagnet(row, col) {
   }));
 }
 
-// Tool 5: Stopwatch — Freezes move counter for 3 turns
-let stopwatchTurns = 0;
+// Tool 5: Stopwatch — Adds time to the countdown timer
 function useStopwatch() {
-  stopwatchTurns += 3;
+  timeLeft += STOPWATCH_BONUS;
   locked = false;
   scorePopups.push({
     x: W / 2, y: H / 2,
-    text: 'Moves Frozen!', alpha: 1, dy: 0,
+    text: '+' + STOPWATCH_BONUS + 's!', alpha: 1, dy: 0,
   });
 }
 
@@ -1888,7 +2069,11 @@ function comboRainbowLightning() {
 function canvasToGrid(cx, cy) {
   const col = Math.floor((cx - boardX) / tileSize);
   const row = Math.floor((cy - boardY) / tileSize);
-  if (row >= 0 && row < ROWS && col >= 0 && col < COLS) return { row, col };
+  if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
+    // Ignore voided cells
+    if (!boardMask[row] || !boardMask[row][col]) return null;
+    return { row, col };
+  }
   return null;
 }
 
@@ -1928,7 +2113,8 @@ function restartGame() {
   level++;
   setupLevel(level);
   score = 0;
-  moves = MAX_MOVES;
+  const cfg = getLevelConfig(level);
+  timeLeft = cfg.time;
   gameOver = false;
   paused = false;
   selected = null;
@@ -1946,6 +2132,16 @@ function restartGame() {
   loveLetterPhase = 0;
   loveLetterTransformed = null;
   loveLetterExploded = null;
+  levelComplete = false;
+  levelCompleteToolQueue = [];
+  levelCompleteDelay = 0;
+  // Show tutorial for new level
+  const levelCfg = getLevelConfig(level);
+  if (levelCfg.intro) {
+    showingTutorial = true;
+    tutorialText = levelCfg.intro;
+    paused = true;
+  }
   // Wait for any new images, then init
   function waitAndInit() {
     if (imagesLoaded >= totalImages) {
@@ -1992,6 +2188,11 @@ function handleToolbarClick(cx, cy) {
         toolInventory[11] = (toolInventory[11] || 0) - 1;
         activeTool = null;
         activateLoveLetter();
+      } else if (tool.tool === 5) {
+        // Stopwatch: activate immediately — adds time
+        toolInventory[5] = (toolInventory[5] || 0) - 1;
+        activeTool = null;
+        useStopwatch();
       } else if (activeTool !== null && activeTool !== tool.tool) {
         // Two different tools selected — check for combo
         const combo = getCombo(activeTool, tool.tool);
@@ -2035,7 +2236,12 @@ canvas.addEventListener('pointerdown', (e) => {
 
   if (locked || paused || gameOver) {
     if (gameOver) handleRestartClick(pos.x, pos.y);
-    if (!gameOver) handlePauseClick(pos.x, pos.y);
+    else if (showingTutorial) {
+      // Dismiss tutorial and start the level
+      showingTutorial = false;
+      paused = false;
+    }
+    else handlePauseClick(pos.x, pos.y);
     return;
   }
   if (handlePauseClick(pos.x, pos.y)) return;
@@ -2063,7 +2269,8 @@ canvas.addEventListener('pointermove', (e) => {
     }
     const tr = pointerDown.row + dr;
     const tc = pointerDown.col + dc;
-    if (tr >= 0 && tr < ROWS && tc >= 0 && tc < COLS) {
+    if (tr >= 0 && tr < ROWS && tc >= 0 && tc < COLS &&
+        boardMask[tr] && boardMask[tr][tc]) {
       doSwap(pointerDown.row, pointerDown.col, tr, tc);
     }
     pointerDown = null;
@@ -2377,10 +2584,23 @@ function drawBoard() {
   ctx.fill();
   ctx.restore();
 
-  // Board bg
-  drawRoundedRect(boardX - 2, boardY - 2, tileSize * COLS + 4, tileSize * ROWS + 4, 10);
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  ctx.fill();
+  // Draw individual cell backgrounds
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = boardX + c * tileSize;
+      const y = boardY + r * tileSize;
+      if (boardMask[r] && boardMask[r][c]) {
+        // Active cell - subtle checkerboard
+        const shade = (r + c) % 2 === 0 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)';
+        ctx.fillStyle = shade;
+        ctx.fillRect(x, y, tileSize, tileSize);
+      } else {
+        // Voided cell - darker, no tile here
+        ctx.fillStyle = 'rgba(0,0,0,0.08)';
+        ctx.fillRect(x, y, tileSize, tileSize);
+      }
+    }
+  }
 }
 
 function drawHUD() {
@@ -2394,16 +2614,26 @@ function drawHUD() {
   ctx.textBaseline = 'top';
   ctx.fillText('Level ' + level, cx, 8);
 
-  // Score
+  // Score with target
+  const lvlCfg = getLevelConfig(level);
   ctx.font = 'bold ' + (tileSize * 0.45) + 'px sans-serif';
-  ctx.fillStyle = '#880e4f';
-  ctx.fillText(score.toLocaleString(), cx, 8 + tileSize * 0.35);
+  ctx.fillStyle = score >= lvlCfg.target ? '#4caf50' : '#880e4f';
+  ctx.fillText(score.toLocaleString() + ' / ' + lvlCfg.target.toLocaleString(), cx, 8 + tileSize * 0.35);
 
-  // Moves
-  ctx.font = (tileSize * 0.26) + 'px sans-serif';
-  ctx.fillStyle = '#ad1457';
+  // Timer
+  const mins = Math.floor(Math.max(0, timeLeft) / 60);
+  const secs = Math.floor(Math.max(0, timeLeft) % 60);
+  const timerStr = mins + ':' + (secs < 10 ? '0' : '') + secs;
+  ctx.font = 'bold ' + (tileSize * 0.3) + 'px sans-serif';
+  // Flash red when low time
+  if (timeLeft <= 10 && !gameOver) {
+    const flash = Math.sin(performance.now() / 200) > 0;
+    ctx.fillStyle = flash ? '#ff1744' : '#ad1457';
+  } else {
+    ctx.fillStyle = '#ad1457';
+  }
   ctx.textAlign = 'left';
-  ctx.fillText('Moves: ' + moves, 12, 15);
+  ctx.fillText('⏱ ' + timerStr, 12, 15);
 
   // Pause button
   const btnSize = tileSize * 0.55;
@@ -2513,8 +2743,10 @@ function drawGameOver() {
   ctx.fillStyle = '#fff';
   ctx.fill();
 
-  // Stars
-  const stars = score >= STAR_THRESHOLDS[2] ? 3 : score >= STAR_THRESHOLDS[1] ? 2 : score >= STAR_THRESHOLDS[0] ? 1 : 0;
+  // Stars based on level target
+  const cfg = getLevelConfig(level);
+  const t = cfg.target;
+  const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
   ctx.font = (tileSize * 0.6) + 'px serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -2551,11 +2783,60 @@ function drawPauseOverlay() {
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold ' + (tileSize * 0.6) + 'px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Paused', W / 2, H / 2);
+
+  if (showingTutorial) {
+    // Tutorial overlay — level intro card
+    const panelW = W * 0.85;
+    const panelH = tileSize * 3.5;
+    const panelX = (W - panelW) / 2;
+    const panelY = H / 2 - panelH / 2;
+
+    drawRoundedRect(panelX, panelY, panelW, panelH, 16);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    // Level number
+    ctx.fillStyle = '#c2185b';
+    ctx.font = 'bold ' + (tileSize * 0.5) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Level ' + level, W / 2, panelY + tileSize * 0.7);
+
+    // Intro text (word wrap)
+    ctx.fillStyle = '#555';
+    ctx.font = (tileSize * 0.28) + 'px sans-serif';
+    const maxTextW = panelW - 30;
+    const words = tutorialText.split(' ');
+    let lines = [];
+    let currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine ? currentLine + ' ' + word : word;
+      if (ctx.measureText(testLine).width > maxTextW) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    const lineH = tileSize * 0.35;
+    const textStartY = panelY + tileSize * 1.3;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], W / 2, textStartY + i * lineH);
+    }
+
+    // Tap to start
+    const pulse = 0.5 + 0.3 * Math.sin(performance.now() / 500);
+    ctx.fillStyle = `rgba(233, 30, 99, ${pulse})`;
+    ctx.font = (tileSize * 0.24) + 'px sans-serif';
+    ctx.fillText('Tap to start!', W / 2, panelY + panelH - tileSize * 0.5);
+  } else {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + (tileSize * 0.6) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Paused', W / 2, H / 2);
+  }
   ctx.restore();
 }
 
@@ -2573,6 +2854,36 @@ function frame(now) {
     render(now / 1000, dt);
     drawPauseOverlay();
     return;
+  }
+
+  // Countdown timer (stop counting during level complete)
+  if (!gameOver && !locked && !levelComplete && timeLeft > 0) {
+    timeLeft -= dt;
+    if (timeLeft <= 0) {
+      timeLeft = 0;
+      gameOver = true;
+    }
+  }
+
+  // Level complete — activate board tools one by one
+  if (levelComplete && !locked && levelCompleteToolQueue.length > 0) {
+    levelCompleteDelay -= dt;
+    if (levelCompleteDelay <= 0) {
+      const next = levelCompleteToolQueue.shift();
+      // Activate this tool on the board
+      if (special[next.row] && special[next.row][next.col] > 0) {
+        const toolNum = special[next.row][next.col];
+        special[next.row][next.col] = 0;
+        activateSpecialOnBoard(toolNum, next.row, next.col);
+      }
+      levelCompleteDelay = 0.6; // delay between each activation
+    }
+  } else if (levelComplete && !locked && levelCompleteToolQueue.length === 0) {
+    // All tools activated, show game over after brief delay
+    levelCompleteDelay -= dt;
+    if (levelCompleteDelay <= 0) {
+      gameOver = true;
+    }
   }
 
   // Update Love Letter animation
@@ -2910,6 +3221,15 @@ function render(time, dt) {
 function init() {
   setupLevel(level);
   resize();
+  // Set initial time from level config
+  const cfg = getLevelConfig(level);
+  timeLeft = cfg.time;
+  // Show tutorial for level 1
+  if (cfg.intro) {
+    showingTutorial = true;
+    tutorialText = cfg.intro;
+    paused = true;
+  }
   // Wait for images to load before starting
   function waitForImages() {
     if (imagesLoaded >= totalImages) {
@@ -2924,6 +3244,11 @@ function init() {
 
 window.addEventListener('resize', resize);
 init();
+
+// Register service worker for PWA
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
