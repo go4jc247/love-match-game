@@ -2060,26 +2060,69 @@ function drawTile(row, col, type, overrides) {
     ctx.fillText(info.name[0], x + w / 2, y + h / 2);
   }
 
-  // Draw special tool overlay if this tile has one
+  ctx.restore();
+}
+
+function drawSpecialTile(row, col, type, overrides) {
   const sp = special[row] && special[row][col];
-  if (sp > 0) {
-    const toolDef = TOOLS.find(t => t.tool === sp);
-    if (toolDef) {
-      const toolImg = imageCache[toolDef.file];
-      if (toolImg) {
-        // Glowing background circle
-        ctx.save();
-        ctx.shadowColor = sp === 1 ? '#ff6600' : sp === 2 ? '#ffff00' : '#ff00ff';
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(x + w / 2, y + h / 2, w * 0.28, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.fill();
-        ctx.restore();
-        // Tool icon overlay (smaller, bottom-right corner)
-        const toolSize = w * 0.45;
-        ctx.drawImage(toolImg, x + w - toolSize - 1, y + h - toolSize - 1, toolSize, toolSize);
-      }
+  if (!sp || sp <= 0) return;
+  const toolDef = TOOLS.find(t => t.tool === sp);
+  if (!toolDef) return;
+
+  const pad = 2;
+  let x = boardX + col * tileSize + pad;
+  let y = boardY + row * tileSize + pad;
+  let w = tileSize - pad * 2;
+  let h = tileSize - pad * 2;
+  let alpha = 1;
+  let scale = 1;
+
+  if (overrides) {
+    if (overrides.x !== undefined) x = overrides.x + pad;
+    if (overrides.y !== undefined) y = overrides.y + pad;
+    if (overrides.alpha !== undefined) alpha = overrides.alpha;
+    if (overrides.scale !== undefined) scale = overrides.scale;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  if (scale !== 1) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+  }
+
+  const radius = w * 0.2;
+
+  // Glowing colored background
+  const glowColor = sp === 1 ? '#ff6600' : sp === 2 ? '#ffee00' : sp === 3 ? '#ff00ff' : '#00bfff';
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = 10;
+  drawRoundedRect(x, y, w, h, radius);
+  const bgGrad = ctx.createRadialGradient(x + w/2, y + h/2, 0, x + w/2, y + h/2, w * 0.7);
+  bgGrad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  bgGrad.addColorStop(1, glowColor + '88');
+  ctx.fillStyle = bgGrad;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Tool icon — full size
+  const toolImg = imageCache[toolDef.file];
+  if (toolImg) {
+    const imgPad = w * 0.08;
+    ctx.drawImage(toolImg, x + imgPad, y + imgPad, w - imgPad * 2, h - imgPad * 2);
+  }
+
+  // Small gem icon in corner to show the "color" of the tile
+  if (type >= 0 && type < TILE_TYPES.length) {
+    const gemImg = imageCache[TILE_TYPES[type].file];
+    if (gemImg) {
+      const gemSize = w * 0.32;
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.drawImage(gemImg, x + w - gemSize - 2, y + h - gemSize - 2, gemSize, gemSize);
     }
   }
 
@@ -2701,6 +2744,13 @@ function render(time, dt) {
       }
 
       const ov = getOverride(r, c);
+
+      // Special tile: draw tool as main icon with glowing bg
+      if (special[r] && special[r][c] > 0) {
+        drawSpecialTile(r, c, grid[r][c], ov);
+        continue;
+      }
+
       drawTile(r, c, grid[r][c], ov);
     }
   }
