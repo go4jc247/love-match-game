@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pick "Clear Everything" Icon</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: linear-gradient(135deg, #ffe0ec, #ffc2d4, #ffb3c6);
+  min-height: 100vh; padding: 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+h1 { color: #880e4f; font-size: 22px; }
+p { color: #666; font-size: 14px; max-width: 400px; text-align: center; }
+.grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 12px; max-width: 440px; width: 100%;
+}
+.option {
+  background: #fff; border-radius: 16px; padding: 12px 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  cursor: pointer; transition: all 0.2s; border: 3px solid transparent;
+}
+.option:hover { transform: scale(1.05); box-shadow: 0 6px 24px rgba(233,30,99,0.2); }
+.option.selected { border-color: #e91e63; background: #fff0f5; }
+.option img { width: 64px; height: 64px; }
+.option .name { font-size: 11px; color: #555; text-align: center; line-height: 1.2; }
+.option .id { font-size: 9px; color: #aaa; }
+.pick-btn {
+  background: linear-gradient(135deg, #e91e63, #c2185b);
+  color: #fff; border: none; border-radius: 12px;
+  padding: 14px 32px; font-size: 16px; font-weight: 600;
+  cursor: pointer; margin-top: 8px; display: none;
+}
+.pick-btn:hover { filter: brightness(1.1); }
+#result { color: #880e4f; font-weight: 600; font-size: 15px; margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+<h1>Pick the "Clear Everything" Icon</h1>
+<p>This tool clears the entire board. It goes in your toolbar or is created by combining Rainbow Star + Rainbow Star. Tap to select:</p>
+
+<div class="grid" id="grid"></div>
+<button class="pick-btn" id="pickBtn" onclick="confirmPick()">Use This Icon</button>
+<div id="result"></div>
+
+<script>
+const reserved = [
+  { id: "s1-bouquet", file: "icons/tile-bouquet.png", name: "Tulip Bouquet" },
+  { id: "s2-2", file: "icons/sheet2-icon-2.png", name: "Champagne" },
+  { id: "s2-4", file: "icons/sheet2-icon-4.png", name: "Donut" },
+  { id: "s2-6", file: "icons/sheet2-icon-6.png", name: "Fish" },
+  { id: "s2-7", file: "icons/sheet2-icon-7.png", name: "Potion Bottle" },
+  { id: "s2-11", file: "icons/sheet2-icon-11.png", name: "Cat Tamagotchi" },
+  { id: "s2-12", file: "icons/sheet2-icon-12.png", name: "Candy Jar" },
+  { id: "s2-16", file: "icons/sheet2-icon-16.png", name: "Fairy Wand" },
+  { id: "s3-1", file: "icons/sheet3-icon-1.png", name: "Pink Paw Prints" },
+  { id: "s3-2", file: "icons/sheet3-icon-2.png", name: "Champagne" },
+  { id: "s3-4", file: "icons/sheet3-icon-4.png", name: "Heart Locket" },
+  { id: "s3-6", file: "icons/sheet3-icon-6.png", name: "Kitten with Bow" },
+  { id: "s3-8", file: "icons/sheet3-icon-8.png", name: "Heart Jar" },
+  { id: "s3-9", file: "icons/sheet3-icon-9.png", name: "Cat Lock + Key" },
+  { id: "s4-2", file: "icons/sheet4-icon-2.png", name: "Champagne Glasses" },
+  { id: "s4-3", file: "icons/sheet4-icon-3.png", name: "Red Yarn Ball" },
+  { id: "s4-5", file: "icons/sheet4-icon-5.png", name: "Gold Fish + Heart" },
+  { id: "s4-7", file: "icons/sheet4-icon-7.png", name: "Photo Album" },
+  { id: "s4-8", file: "icons/sheet4-icon-8.png", name: "Candles" },
+  { id: "s4-10", file: "icons/sheet4-icon-10.png", name: "Pink Collar + Bell" },
+  { id: "s5-3", file: "icons/sheet5-icon-3.png", name: "Pink Heart" },
+  { id: "s5-9", file: "icons/sheet5-icon-9.png", name: "Coin Stack" },
+  { id: "s5-10", file: "icons/sheet5-icon-10.png", name: "Heart Key" },
+  { id: "s5-14", file: "icons/sheet5-icon-14.png", name: "Love Letter" }
+];
+
+let selected = null;
+const grid = document.getElementById('grid');
+const pickBtn = document.getElementById('pickBtn');
+
+reserved.forEach((r, i) => {
+  const div = document.createElement('div');
+  div.className = 'option';
+  div.innerHTML = `<img src="${r.file}"><div class="name">${r.name}</div><div class="id">${r.id}</div>`;
+  div.onclick = () => {
+    document.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+    div.classList.add('selected');
+    selected = r;
+    pickBtn.style.display = 'block';
+    pickBtn.textContent = `Use "${r.name}"`;
+  };
+  grid.appendChild(div);
+});
+
+function confirmPick() {
+  if (!selected) return;
+  const result = document.getElementById('result');
+  result.style.display = 'block';
+  result.textContent = `Selected: ${selected.id} — ${selected.name} (${selected.file})`;
+  // Also store in localStorage for easy retrieval
+  localStorage.setItem('clearEverythingPick', JSON.stringify(selected));
+}
+</script>
+</body>
+</html>

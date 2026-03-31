@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Match Shapes Reference</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: linear-gradient(135deg, #ffe0ec, #ffc2d4, #ffb3c6);
+  min-height: 100vh; padding: 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 24px;
+}
+h1 { color: #880e4f; font-size: 22px; }
+.shape-card {
+  background: #fff; border-radius: 16px; padding: 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  width: 100%; max-width: 400px;
+}
+.shape-card h2 {
+  color: #c2185b; font-size: 16px; margin-bottom: 4px;
+}
+.shape-card .creates {
+  color: #888; font-size: 13px; margin-bottom: 12px;
+}
+.shape-card .creates span {
+  color: #e91e63; font-weight: 600;
+}
+.mini-board {
+  display: grid; gap: 3px; justify-content: center;
+}
+.mini-board .cell {
+  width: 48px; height: 48px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.cell.empty { background: rgba(0,0,0,0.04); }
+.cell.match {
+  background: linear-gradient(135deg, #ff4081, #e91e63);
+  box-shadow: 0 0 12px rgba(233,30,99,0.4);
+}
+.cell.match img { width: 36px; height: 36px; filter: drop-shadow(0 0 4px rgba(255,255,255,0.8)); }
+.cell.normal { background: rgba(0,0,0,0.06); }
+.cell.normal img { width: 36px; height: 36px; opacity: 0.35; }
+.cell.spawn {
+  background: linear-gradient(135deg, #ff9800, #f57c00);
+  box-shadow: 0 0 12px rgba(255,152,0,0.5);
+  position: relative;
+}
+.cell.spawn img { width: 36px; height: 36px; filter: drop-shadow(0 0 4px rgba(255,255,255,0.8)); }
+.cell.spawn::after {
+  content: 'NEW'; position: absolute; bottom: -2px; right: -2px;
+  background: #ff9800; color: #fff; font-size: 8px; font-weight: bold;
+  padding: 1px 4px; border-radius: 4px;
+}
+</style>
+</head>
+<body>
+<h1>Match Shapes</h1>
+
+<!-- 3 in a row -->
+<div class="shape-card">
+  <h2>3 in a Row</h2>
+  <div class="creates">Creates: <span>Points only (+50)</span></div>
+  <div class="mini-board" style="grid-template-columns: repeat(5, 48px); grid-template-rows: repeat(3, 48px);">
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell match"><img src="icons/tile-heart.png"></div>
+    <div class="cell match"><img src="icons/tile-heart.png"></div>
+    <div class="cell match"><img src="icons/tile-heart.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+  </div>
+</div>
+
+<!-- 4 in a row -->
+<div class="shape-card">
+  <h2>4 in a Row</h2>
+  <div class="creates">Creates: <span>Lightning Bolt</span></div>
+  <div class="mini-board" style="grid-template-columns: repeat(5, 48px); grid-template-rows: repeat(3, 48px);">
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell match"><img src="icons/tile-rose.png"></div>
+    <div class="cell match"><img src="icons/tile-rose.png"></div>
+    <div class="cell match"><img src="icons/tile-rose.png"></div>
+    <div class="cell spawn"><img src="icons/sheet5-icon-12.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+  </div>
+</div>
+
+<!-- 5 in a row -->
+<div class="shape-card">
+  <h2>5 in a Row</h2>
+  <div class="creates">Creates: <span>Rainbow Star</span></div>
+  <div class="mini-board" style="grid-template-columns: repeat(6, 48px); grid-template-rows: repeat(3, 48px);">
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell match"><img src="icons/tile-envelope.png"></div>
+    <div class="cell match"><img src="icons/tile-envelope.png"></div>
+    <div class="cell spawn"><img src="icons/sheet5-icon-5.png"></div>
+    <div class="cell match"><img src="icons/tile-envelope.png"></div>
+    <div class="cell match"><img src="icons/tile-envelope.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+  </div>
+</div>
+
+<!-- 2x2 Square -->
+<div class="shape-card">
+  <h2>2x2 Square</h2>
+  <div class="creates">Creates: <span>Potion</span></div>
+  <div class="mini-board" style="grid-template-columns: repeat(4, 48px); grid-template-rows: repeat(4, 48px);">
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell match"><img src="icons/tile-gift.png"></div>
+    <div class="cell match"><img src="icons/tile-gift.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell match"><img src="icons/tile-gift.png"></div>
+    <div class="cell spawn"><img src="icons/sheet5-icon-4.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+  </div>
+</div>
+
+<!-- L-shape -->
+<div class="shape-card">
+  <h2>L-Shape</h2>
+  <div class="creates">Creates: <span>Bomb</span></div>
+  <div class="mini-board" style="grid-template-columns: repeat(5, 48px); grid-template-rows: repeat(4, 48px);">
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell match"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell match"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell spawn"><img src="icons/sheet5-icon-13.png"></div>
+    <div class="cell match"><img src="icons/tile-paw.png"></div>
+    <div class="cell match"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+  </div>
+</div>
+
+<!-- T-shape -->
+<div class="shape-card">
+  <h2>T-Shape</h2>
+  <div class="creates">Creates: <span>Bomb</span></div>
+  <div class="mini-board" style="grid-template-columns: repeat(5, 48px); grid-template-rows: repeat(4, 48px);">
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell match"><img src="icons/sheet2-icon-10.png"></div>
+    <div class="cell match"><img src="icons/sheet2-icon-10.png"></div>
+    <div class="cell match"><img src="icons/sheet2-icon-10.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell spawn"><img src="icons/sheet5-icon-13.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell match"><img src="icons/sheet2-icon-10.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+  </div>
+</div>
+
+<!-- Cross -->
+<div class="shape-card">
+  <h2>Cross / Plus</h2>
+  <div class="creates">Creates: <span>Rainbow Star</span></div>
+  <div class="mini-board" style="grid-template-columns: repeat(5, 48px); grid-template-rows: repeat(5, 48px);">
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell spawn"><img src="icons/sheet5-icon-5.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-8.png"></div>
+    <div class="cell normal"><img src="icons/tile-paw.png"></div>
+    <div class="cell normal"><img src="icons/sheet2-icon-3.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell match"><img src="icons/sheet3-icon-5.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+    <div class="cell normal"><img src="icons/tile-bow.png"></div>
+  </div>
+</div>
+
+</body>
+</html>

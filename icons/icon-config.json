@@ -38,7 +38,8 @@
     { "id": "s5-8", "file": "icons/sheet5-icon-8.png", "name": "Magic Wand", "tool": 7, "desc": "Removes any single tile" },
     { "id": "s5-7", "file": "icons/sheet5-icon-7.png", "name": "Treasure Chest", "tool": 8, "desc": "Reveals coins or random power-up" },
     { "id": "s5-20", "file": "icons/sheet5-icon-20.png", "name": "Slingshot", "tool": 9, "desc": "Clears entire diagonal line" },
-    { "id": "s5-19", "file": "icons/sheet5-icon-19.png", "name": "Pink Cloud", "tool": 10, "desc": "Shuffles entire board" }
+    { "id": "s5-19", "file": "icons/sheet5-icon-19.png", "name": "Pink Cloud", "tool": 10, "desc": "Shuffles entire board" },
+    { "id": "s5-14", "file": "icons/sheet5-icon-14.png", "name": "Love Letter", "tool": 11, "desc": "Clears entire board — all gems become pink hearts then explode" }
   ],
   "reserved": [
     { "id": "s1-bouquet", "file": "icons/tile-bouquet.png", "name": "Tulip Bouquet" },
@@ -64,6 +65,5 @@
     { "id": "s5-3", "file": "icons/sheet5-icon-3.png", "name": "Pink Heart" },
     { "id": "s5-9", "file": "icons/sheet5-icon-9.png", "name": "Coin Stack" },
     { "id": "s5-10", "file": "icons/sheet5-icon-10.png", "name": "Heart Key" },
-    { "id": "s5-14", "file": "icons/sheet5-icon-14.png", "name": "Love Letter" }
   ]
 }
