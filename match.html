@@ -392,9 +392,35 @@ let selectPulse = 0;
 
 // Tool inventory: each tool has a count (start with some for testing)
 let toolInventory = {};
-for (const t of TOOLS) {
-  toolInventory[t.tool] = t.tool === 11 ? 1 : 2; // Love Letter is rare: start with 1
+
+// Tools unlock progressively: tool number → minimum level to appear
+const TOOL_UNLOCK_LEVEL = {
+  1: 4,   // Bomb — unlocked at level 4 (when L/T match is taught)
+  2: 2,   // Lightning — unlocked at level 2 (when 4-row is taught)
+  3: 5,   // Rainbow Star — unlocked at level 5
+  4: 8,   // Magnet — unlocked at level 8
+  5: 11,  // Stopwatch — unlocked at level 11 (when tip is given)
+  6: 3,   // Potion — unlocked at level 3 (when 2x2 is taught)
+  7: 7,   // Magic Wand — unlocked at level 7
+  8: 10,  // Treasure Chest — unlocked at level 10
+  9: 13,  // Slingshot — unlocked at level 13
+  10: 9,  // Cloud/Shuffle — unlocked at level 9
+  11: 15, // Love Letter — unlocked at level 15
+};
+
+function initToolInventory() {
+  toolInventory = {};
+  for (const t of TOOLS) {
+    const unlockLvl = TOOL_UNLOCK_LEVEL[t.tool] || 1;
+    if (level >= unlockLvl) {
+      // Give 1-2 of each unlocked tool, Love Letter is rare
+      toolInventory[t.tool] = t.tool === 11 ? 1 : 2;
+    } else {
+      toolInventory[t.tool] = 0;
+    }
+  }
 }
+initToolInventory();
 
 // Which tool slots to show in the toolbar (5 at a time, scrollable later)
 const TOOLBAR_SLOTS = 5;
@@ -2165,6 +2191,7 @@ function restartGame() {
   }
   // Otherwise retry same level
   setupLevel(level);
+  initToolInventory();
   score = 0;
   const cfg = getLevelConfig(level);
   timeLeft = cfg.time;
@@ -2208,10 +2235,10 @@ function restartGame() {
 
 function handleToolbarClick(cx, cy) {
   // Check page arrows
-  if (TOOLS.length > TOOLBAR_SLOTS) {
+  if (getUnlockedTools().length > TOOLBAR_SLOTS) {
     const arrowSize = toolSlotSize * 0.3;
     const arrowY = toolbarY + toolbarH / 2;
-    const maxPage = Math.ceil(TOOLS.length / TOOLBAR_SLOTS) - 1;
+    const maxPage = Math.ceil(getUnlockedTools().length / TOOLBAR_SLOTS) - 1;
 
     // Left arrow
     if (cx < 14 + arrowSize + 10 && cy > toolbarY && cy < toolbarY + toolbarH && toolbarPage > 0) {
@@ -3060,9 +3087,17 @@ function frame(now) {
   if (gameOver) drawGameOver();
 }
 
+function getUnlockedTools() {
+  return TOOLS.filter(t => {
+    const unlockLvl = TOOL_UNLOCK_LEVEL[t.tool] || 1;
+    return level >= unlockLvl;
+  });
+}
+
 function getToolbarSlots() {
+  const unlocked = getUnlockedTools();
   const start = toolbarPage * TOOLBAR_SLOTS;
-  return TOOLS.slice(start, start + TOOLBAR_SLOTS);
+  return unlocked.slice(start, start + TOOLBAR_SLOTS);
 }
 
 function getToolSlotRect(index) {
@@ -3134,7 +3169,7 @@ function drawToolbar() {
   }
 
   // Page arrows if more than 5 tools
-  if (TOOLS.length > TOOLBAR_SLOTS) {
+  if (getUnlockedTools().length > TOOLBAR_SLOTS) {
     const arrowSize = toolSlotSize * 0.3;
     const arrowY = toolbarY + toolbarH / 2;
 
@@ -3148,7 +3183,7 @@ function drawToolbar() {
     ctx.fill();
 
     // Right arrow
-    const maxPage = Math.ceil(TOOLS.length / TOOLBAR_SLOTS) - 1;
+    const maxPage = Math.ceil(getUnlockedTools().length / TOOLBAR_SLOTS) - 1;
     ctx.fillStyle = toolbarPage < maxPage ? '#c2185b' : 'rgba(0,0,0,0.15)';
     ctx.beginPath();
     ctx.moveTo(W - 14, arrowY);
