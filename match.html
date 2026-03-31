@@ -235,6 +235,21 @@ function wouldMatch(row, col, type) {
   // Check up
   if (row >= 2 && grid[row-1] !== undefined && grid[row-1][col] === type &&
       grid[row-2] !== undefined && grid[row-2][col] === type) return true;
+  // Check 2x2 square (check all 4 possible 2x2 positions this cell could be part of)
+  for (let dr = -1; dr <= 0; dr++) {
+    for (let dc = -1; dc <= 0; dc++) {
+      const r0 = row + dr, c0 = col + dc;
+      if (r0 < 0 || r0 + 1 >= ROWS || c0 < 0 || c0 + 1 >= COLS) continue;
+      let count = 0;
+      for (let rr = r0; rr <= r0 + 1; rr++) {
+        for (let cc = c0; cc <= c0 + 1; cc++) {
+          if (rr === row && cc === col) continue; // skip self
+          if (grid[rr] && grid[rr][cc] === type) count++;
+        }
+      }
+      if (count === 3) return true; // other 3 cells already match
+    }
+  }
   return false;
 }
 
@@ -266,6 +281,20 @@ function findMatches() {
         for (let i = 0; i < len; i++) matched.add((r + i) * COLS + c);
       }
       if (len > 1) r += len - 2;
+    }
+  }
+
+  // 2x2 squares
+  for (let r = 0; r <= ROWS - 2; r++) {
+    for (let c = 0; c <= COLS - 2; c++) {
+      const t = grid[r][c];
+      if (t < 0) continue;
+      if (grid[r][c+1] === t && grid[r+1][c] === t && grid[r+1][c+1] === t) {
+        matched.add(r * COLS + c);
+        matched.add(r * COLS + c + 1);
+        matched.add((r+1) * COLS + c);
+        matched.add((r+1) * COLS + c + 1);
+      }
     }
   }
 
@@ -313,6 +342,20 @@ function getMatchGroups() {
         groups.push(g);
       }
       r += len;
+    }
+  }
+
+  // 2x2 squares
+  for (let r = 0; r <= ROWS - 2; r++) {
+    for (let c = 0; c <= COLS - 2; c++) {
+      const t = grid[r][c];
+      if (t < 0) continue;
+      if (grid[r][c+1] === t && grid[r+1][c] === t && grid[r+1][c+1] === t) {
+        groups.push([
+          { row: r, col: c }, { row: r, col: c+1 },
+          { row: r+1, col: c }, { row: r+1, col: c+1 }
+        ]);
+      }
     }
   }
 
@@ -403,7 +446,11 @@ function doSwap(r1, c1, r2, c2) {
       // Invalid swap - swap back
       animateSwapBack(r1, c1, r2, c2);
     } else {
-      moves--;
+      if (stopwatchTurns > 0) {
+        stopwatchTurns--;
+      } else {
+        moves--;
+      }
       cascadeLevel = 0;
       processMatches();
     }
@@ -651,6 +698,374 @@ function activateLoveLetter() {
   loveLetterTransformOrder = cells;
 }
 
+// ── Tool Usage ──
+function useTool(toolNum, row, col) {
+  const count = toolInventory[toolNum] || 0;
+  if (count <= 0) { activeTool = null; return; }
+
+  toolInventory[toolNum]--;
+  activeTool = null;
+  selected = null;
+
+  switch (toolNum) {
+    case 1: useBomb(row, col); break;
+    case 2: useLightning(row, col); break;
+    case 3: useRainbowStar(row, col); break;
+    case 4: useMagnet(row, col); break;
+    case 5: useStopwatch(); break;
+    case 6: usePotion(row, col); break;
+    case 7: useMagicWand(row, col); break;
+    case 8: useTreasureChest(row, col); break;
+    case 9: useSlingshot(row, col); break;
+    case 10: useCloud(); break;
+    default: break;
+  }
+}
+
+// Tool 1: Bomb — Explodes 3x3 area
+function useBomb(row, col) {
+  locked = true;
+  const targets = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      const r = row + dr, c = col + dc;
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+        targets.push({ row: r, col: c });
+      }
+    }
+  }
+
+  let pts = targets.length * 30;
+  score += pts;
+  scorePopups.push({
+    x: boardX + col * tileSize + tileSize / 2,
+    y: boardY + row * tileSize + tileSize / 2,
+    text: '+' + pts, alpha: 1, dy: 0,
+  });
+
+  // Animate: scale up then shrink + fade
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  animations.push(new Animation(300, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      const scale = t < 0.3 ? 1 + et * 0.3 : 1.3 - (et - 0.3) * 1.3;
+      setOverride(tgt.row, tgt.col, { scale: Math.max(0, scale), alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
+    }
+    applyGravity();
+  }));
+}
+
+// Tool 2: Lightning — Clears entire row AND column of tapped tile
+function useLightning(row, col) {
+  locked = true;
+  const targets = [];
+  const seen = new Set();
+  for (let c = 0; c < COLS; c++) {
+    if (grid[row][c] >= 0 && !seen.has(tileKey(row, c))) {
+      targets.push({ row, col: c });
+      seen.add(tileKey(row, c));
+    }
+  }
+  for (let r = 0; r < ROWS; r++) {
+    if (grid[r][col] >= 0 && !seen.has(tileKey(r, col))) {
+      targets.push({ row: r, col });
+      seen.add(tileKey(r, col));
+    }
+  }
+
+  let pts = targets.length * 25;
+  score += pts;
+  scorePopups.push({
+    x: boardX + col * tileSize + tileSize / 2,
+    y: boardY + row * tileSize + tileSize / 2,
+    text: '+' + pts, alpha: 1, dy: 0,
+  });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  animations.push(new Animation(350, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+    }
+    applyGravity();
+  }));
+}
+
+// Tool 3: Rainbow Star — Removes all tiles of the tapped type
+function useRainbowStar(row, col) {
+  locked = true;
+  const type = grid[row][col];
+  if (type < 0) { locked = false; toolInventory[3]++; return; }
+
+  const targets = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === type) targets.push({ row: r, col: c });
+    }
+  }
+
+  let pts = targets.length * 35;
+  score += pts;
+  scorePopups.push({
+    x: boardX + col * tileSize + tileSize / 2,
+    y: boardY + row * tileSize + tileSize / 2,
+    text: '+' + pts, alpha: 1, dy: 0,
+  });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  animations.push(new Animation(400, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      setOverride(tgt.row, tgt.col, { scale: 1 - et, alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
+    }
+    applyGravity();
+  }));
+}
+
+// Tool 4: Magnet — Pulls all of tapped type to bottom rows
+function useMagnet(row, col) {
+  locked = true;
+  const type = grid[row][col];
+  if (type < 0) { locked = false; toolInventory[4]++; return; }
+
+  // Collect positions of this type and remove them
+  const positions = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === type) {
+        positions.push({ r, c });
+        grid[r][c] = -1;
+      }
+    }
+  }
+
+  // Place them at the bottom of their columns
+  for (const pos of positions) {
+    // Find lowest empty spot in this column
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (grid[r][pos.c] < 0) {
+        grid[r][pos.c] = type;
+        break;
+      }
+    }
+  }
+
+  // Just do a quick gravity + settle
+  applyGravity();
+}
+
+// Tool 5: Stopwatch — Freezes move counter for 3 turns
+let stopwatchTurns = 0;
+function useStopwatch() {
+  stopwatchTurns += 3;
+  locked = false;
+  scorePopups.push({
+    x: W / 2, y: H / 2,
+    text: 'Moves Frozen!', alpha: 1, dy: 0,
+  });
+}
+
+// Tool 6: Potion — Transforms 2x2 area into the tapped tile's type
+function usePotion(row, col) {
+  locked = true;
+  const type = grid[row][col];
+  if (type < 0) { locked = false; toolInventory[6]++; return; }
+
+  // 2x2 starting from tapped cell (pick best corner)
+  const r2 = Math.min(row, ROWS - 2);
+  const c2 = Math.min(col, COLS - 2);
+
+  for (let dr = 0; dr <= 1; dr++) {
+    for (let dc = 0; dc <= 1; dc++) {
+      grid[r2 + dr][c2 + dc] = type;
+    }
+  }
+
+  // Flash animation
+  const cells = [{row:r2,col:c2},{row:r2,col:c2+1},{row:r2+1,col:c2},{row:r2+1,col:c2+1}];
+  animations.push(new Animation(300, (t) => {
+    const pulse = Math.sin(t * Math.PI * 3);
+    for (const c of cells) {
+      setOverride(c.row, c.col, { scale: 1 + pulse * 0.15 });
+    }
+  }, () => {
+    for (const c of cells) clearOverride(c.row, c.col);
+    processMatches();
+  }));
+}
+
+// Tool 7: Magic Wand — Removes any single tile
+function useMagicWand(row, col) {
+  locked = true;
+  if (grid[row][col] < 0) { locked = false; toolInventory[7]++; return; }
+
+  score += 20;
+  scorePopups.push({
+    x: boardX + col * tileSize + tileSize / 2,
+    y: boardY + row * tileSize + tileSize / 2,
+    text: '+20', alpha: 1, dy: 0,
+  });
+
+  removingTiles.add(tileKey(row, col));
+  animations.push(new Animation(250, (t) => {
+    const et = easeOut(t);
+    setOverride(row, col, { scale: 1 + et * 0.3, alpha: 1 - et });
+  }, () => {
+    grid[row][col] = -1;
+    clearOverride(row, col);
+    removingTiles.delete(tileKey(row, col));
+    spawnHeartBurst(boardX + col * tileSize + tileSize / 2, boardY + row * tileSize + tileSize / 2, 5);
+    applyGravity();
+  }));
+}
+
+// Tool 8: Treasure Chest — Reveals coins (bonus score) or a random power-up
+function useTreasureChest(row, col) {
+  const roll = Math.random();
+  if (roll < 0.5) {
+    // Bonus score
+    const bonus = [100, 200, 300, 500][Math.floor(Math.random() * 4)];
+    score += bonus;
+    scorePopups.push({
+      x: boardX + col * tileSize + tileSize / 2,
+      y: boardY + row * tileSize + tileSize / 2,
+      text: '+' + bonus + '!', alpha: 1, dy: 0,
+    });
+  } else {
+    // Random power-up (tools 1-10, not 11)
+    const randomTool = 1 + Math.floor(Math.random() * 10);
+    toolInventory[randomTool] = (toolInventory[randomTool] || 0) + 1;
+    const toolName = TOOLS.find(t => t.tool === randomTool)?.name || 'Tool';
+    scorePopups.push({
+      x: boardX + col * tileSize + tileSize / 2,
+      y: boardY + row * tileSize + tileSize / 2,
+      text: '+' + toolName + '!', alpha: 1, dy: 0,
+    });
+  }
+  locked = false;
+}
+
+// Tool 9: Slingshot — Clears entire diagonal line through tapped tile
+function useSlingshot(row, col) {
+  locked = true;
+  const targets = [];
+  const seen = new Set();
+
+  // Both diagonals through (row, col)
+  for (let d = -Math.max(ROWS, COLS); d <= Math.max(ROWS, COLS); d++) {
+    // Top-left to bottom-right
+    let r = row + d, c = col + d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+      const k = tileKey(r, c);
+      if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+    // Top-right to bottom-left
+    r = row + d; c = col - d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+      const k = tileKey(r, c);
+      if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+  }
+
+  let pts = targets.length * 25;
+  score += pts;
+  scorePopups.push({
+    x: boardX + col * tileSize + tileSize / 2,
+    y: boardY + row * tileSize + tileSize / 2,
+    text: '+' + pts, alpha: 1, dy: 0,
+  });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  animations.push(new Animation(350, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+    }
+    applyGravity();
+  }));
+}
+
+// Tool 10: Cloud — Shuffles entire board
+function useCloud() {
+  locked = true;
+  // Collect all current tile types
+  const tiles = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] >= 0) tiles.push(grid[r][c]);
+    }
+  }
+
+  // Shrink all tiles
+  animations.push(new Animation(300, (t) => {
+    const et = easeOut(t);
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        setOverride(r, c, { scale: 1 - et * 0.8, alpha: 1 - et * 0.5 });
+      }
+    }
+  }, () => {
+    // Shuffle
+    for (let i = tiles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+    }
+    let idx = 0;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c] >= 0) grid[r][c] = tiles[idx++];
+      }
+    }
+
+    // Grow back in
+    animations.push(new Animation(300, (t) => {
+      const et = easeOutBounce(t);
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          setOverride(r, c, { scale: 0.2 + et * 0.8, alpha: 0.5 + et * 0.5 });
+        }
+      }
+    }, () => {
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          clearOverride(r, c);
+        }
+      }
+      processMatches();
+    }));
+  }));
+}
+
 // ── Input Handling ──
 function canvasToGrid(cx, cy) {
   const col = Math.floor((cx - boardX) / tileSize);
@@ -820,6 +1235,13 @@ canvas.addEventListener('pointerup', (e) => {
     // Tap
     const cell = canvasToGrid(pos.x, pos.y);
     if (!cell) { pointerDown = null; return; }
+
+    // If a tool is active, use it on the tapped cell
+    if (activeTool !== null) {
+      useTool(activeTool, cell.row, cell.col);
+      pointerDown = null;
+      return;
+    }
 
     if (selected) {
       if (selected.row === cell.row && selected.col === cell.col) {
