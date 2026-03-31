@@ -35,6 +35,49 @@ canvas {
 <script>
 'use strict';
 
+// ── Sound Effects (procedural via Web Audio API) ──
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e) { return null; }
+  }
+  return audioCtx;
+}
+function playTone(freq, duration, type, vol) {
+  const ctx = getAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol || 0.15, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + duration);
+}
+function sfxMatch(cascade) {
+  // Rising pitch with cascade level
+  const base = 400 + cascade * 80;
+  playTone(base, 0.12, 'sine', 0.12);
+  setTimeout(() => playTone(base * 1.25, 0.1, 'sine', 0.1), 60);
+}
+function sfxSwap() { playTone(300, 0.08, 'triangle', 0.08); }
+function sfxBadSwap() { playTone(200, 0.15, 'sawtooth', 0.06); }
+function sfxSpecial() {
+  playTone(600, 0.15, 'sine', 0.12);
+  setTimeout(() => playTone(800, 0.12, 'sine', 0.1), 80);
+  setTimeout(() => playTone(1000, 0.1, 'sine', 0.08), 160);
+}
+function sfxLevelComplete() {
+  [0, 100, 200, 300, 400].forEach((delay, i) => {
+    setTimeout(() => playTone(500 + i * 100, 0.2, 'sine', 0.12), delay);
+  });
+}
+function sfxGameOver() { playTone(300, 0.3, 'sawtooth', 0.08); playTone(200, 0.4, 'sawtooth', 0.06); }
+
 // ── Grid dimensions (dynamic per level) ──
 let COLS = 8, ROWS = 8;
 
@@ -925,6 +968,7 @@ function doSwap(r1, c1, r2, c2) {
   }
   locked = true;
   selected = null;
+  sfxSwap();
 
   // Animate swap
   const startX1 = boardX + c1 * tileSize;
@@ -984,6 +1028,7 @@ function doSwap(r1, c1, r2, c2) {
     const matches = findMatches();
     if (matches.size === 0) {
       // Invalid swap - swap back (also swap specials back)
+      sfxBadSwap();
       const tmpSp2 = special[r1][c1];
       special[r1][c1] = special[r2][c2];
       special[r2][c2] = tmpSp2;
@@ -1087,6 +1132,7 @@ function processMatches() {
   }
 
   score += totalScore;
+  sfxMatch(cascadeLevel);
   checkLevelComplete();
   lastSwap = null; // Only use swap position for the initial match, not cascades
 
@@ -1204,6 +1250,7 @@ function checkLevelComplete() {
   const cfg = getLevelConfig(level);
   if (score >= cfg.target) {
     levelComplete = true;
+    sfxLevelComplete();
     // Collect all special tools on the board to activate one by one
     levelCompleteToolQueue = [];
     for (let r = 0; r < ROWS; r++) {
@@ -1432,6 +1479,7 @@ function activateLoveLetter() {
 function activateSpecialOnBoard(toolNum, row, col) {
   locked = true;
   cascadeLevel = 0;
+  sfxSpecial();
   triggerScreenShake(5);
   triggerFlash(0.25);
   switch (toolNum) {
@@ -3058,6 +3106,7 @@ function frame(now) {
     if (timeLeft <= 0) {
       timeLeft = 0;
       gameOver = true;
+      sfxGameOver();
     }
   }
 
