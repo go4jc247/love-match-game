@@ -526,17 +526,51 @@ function resize() {
   boardY = hudH;
 }
 
+// ── URL Parameters ──
+const urlParams = new URLSearchParams(window.location.search);
+const urlLevel = urlParams.get('level') ? parseInt(urlParams.get('level')) : null;
+const urlTheme = urlParams.get('theme') || null;
+const launchedFromApp = urlLevel !== null; // true if launched from index.html
+
 // ── Save/Load ──
 function saveProgress() {
   try {
     localStorage.setItem('lovematch_level', level.toString());
-    localStorage.setItem('lovematch_highLevel', Math.max(level, parseInt(localStorage.getItem('lovematch_highLevel') || '1')).toString());
+    const highLevel = Math.max(level, parseInt(localStorage.getItem('lovematch_highLevel') || '1'));
+    localStorage.setItem('lovematch_highLevel', highLevel.toString());
+    // Also save in format the main app reads
+    const appSave = JSON.parse(localStorage.getItem('lovematch_save') || '{}');
+    if (!appSave.progress) appSave.progress = {};
+    appSave.progress.currentLevel = highLevel;
+    if (!appSave.progress.levelStars) appSave.progress.levelStars = {};
+    localStorage.setItem('lovematch_save', JSON.stringify(appSave));
+  } catch(e) {}
+}
+function saveLevelStars(lvl, stars) {
+  try {
+    // Save stars for this specific level
+    const starsMap = JSON.parse(localStorage.getItem('lovematch_stars') || '{}');
+    starsMap[lvl] = Math.max(starsMap[lvl] || 0, stars);
+    localStorage.setItem('lovematch_stars', JSON.stringify(starsMap));
+    // Also update main app save
+    const appSave = JSON.parse(localStorage.getItem('lovematch_save') || '{}');
+    if (!appSave.progress) appSave.progress = {};
+    if (!appSave.progress.levelStars) appSave.progress.levelStars = {};
+    appSave.progress.levelStars[lvl] = Math.max(appSave.progress.levelStars[lvl] || 0, stars);
+    if (!appSave.progress.totalScore) appSave.progress.totalScore = 0;
+    appSave.progress.totalScore += score;
+    localStorage.setItem('lovematch_save', JSON.stringify(appSave));
   } catch(e) {}
 }
 function loadProgress() {
+  // If launched from app with ?level=N, use that
+  if (urlLevel !== null) return urlLevel;
   try {
     return parseInt(localStorage.getItem('lovematch_level') || '1');
   } catch(e) { return 1; }
+}
+function goBackToMenu() {
+  window.location.href = 'index.html';
 }
 
 // ── Game State ──
@@ -2455,13 +2489,40 @@ function handleRestartClick(cx, cy) {
   else { yOff += tileSize * 0.32 + tileSize * 0.4; }
   yOff += tileSize * 0.55; // stars
   yOff += tileSize * 0.6; // score
-  const btnW = 180, btnH = 46;
+  const btnW = 180, btnH = 44;
   const btnX = W / 2 - btnW / 2;
   const btnY = yOff;
+
+  // Primary button (Next Level / Try Again)
   if (cx >= btnX && cx <= btnX + btnW && cy >= btnY && cy <= btnY + btnH) {
+    // Save stars for completed level
+    if (levelComplete) {
+      const cfg = getLevelConfig(level);
+      const t = cfg.target;
+      const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
+      saveLevelStars(level, stars);
+    }
     restartGame();
     return true;
   }
+
+  // "Back to Levels" button
+  const btn2Y = btnY + btnH + 10;
+  if ((launchedFromApp || levelComplete) && cx >= btnX && cx <= btnX + btnW && cy >= btn2Y && cy <= btn2Y + btnH) {
+    // Save stars before leaving
+    if (levelComplete) {
+      const cfg = getLevelConfig(level);
+      const t = cfg.target;
+      const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
+      saveLevelStars(level, stars);
+      // Save next level as unlocked
+      level++;
+      saveProgress();
+    }
+    goBackToMenu();
+    return true;
+  }
+
   return false;
 }
 
@@ -3173,12 +3234,12 @@ function drawGameOver() {
   ctx.fillText('Score: ' + score.toLocaleString(), W / 2, yOff);
   yOff += tileSize * 0.6;
 
-  // Restart button
-  const btnW = 180, btnH = 46;
+  // Primary button (Next Level / Try Again)
+  const btnW = 180, btnH = 44;
   const btnX = W / 2 - btnW / 2;
   const btnY = yOff;
 
-  drawRoundedRect(btnX, btnY, btnW, btnH, 23);
+  drawRoundedRect(btnX, btnY, btnW, btnH, 22);
   const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
   btnGrad.addColorStop(0, '#ff6b8a');
   btnGrad.addColorStop(1, '#e91e63');
@@ -3186,9 +3247,23 @@ function drawGameOver() {
   ctx.fill();
 
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold ' + (tileSize * 0.3) + 'px sans-serif';
+  ctx.font = 'bold ' + (tileSize * 0.28) + 'px sans-serif';
   const btnLabel = isFinale ? 'Keep Playing!' : (levelComplete ? 'Next Level' : 'Try Again');
   ctx.fillText(btnLabel, W / 2, btnY + btnH / 2);
+
+  // "Back to Levels" button (always shown when launched from app, or as secondary option)
+  if (launchedFromApp || levelComplete) {
+    const btn2Y = btnY + btnH + 10;
+    drawRoundedRect(btnX, btn2Y, btnW, btnH, 22);
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fill();
+    ctx.strokeStyle = '#c2185b';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = '#c2185b';
+    ctx.font = (tileSize * 0.24) + 'px sans-serif';
+    ctx.fillText('Back to Levels', W / 2, btn2Y + btnH / 2);
+  }
 
   ctx.restore();
 }

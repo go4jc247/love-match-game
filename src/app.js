@@ -382,9 +382,32 @@ class App {
 
   showLevelMap() {
     this.audio.playMusicForScreen('levelMap');
-    const allLevels = this.levelManager.getLevels();
-    // Build progress map: { levelNumber: { stars, unlocked } }
-    const currentLevel = this.state.progress.currentLevel;
+
+    // Sync progress from match game localStorage
+    try {
+      const matchHighLevel = parseInt(localStorage.getItem('lovematch_highLevel') || '1');
+      const matchStars = JSON.parse(localStorage.getItem('lovematch_stars') || '{}');
+      // Update app state with match game progress
+      if (matchHighLevel > (this.state.progress.currentLevel || 1)) {
+        this.state.progress.currentLevel = matchHighLevel;
+      }
+      for (const [lvl, stars] of Object.entries(matchStars)) {
+        const num = parseInt(lvl);
+        if (stars > (this.state.progress.levelStars[num] || 0)) {
+          this.state.progress.levelStars[num] = stars;
+        }
+      }
+      this.saveGame();
+    } catch (e) { /* ignore sync errors */ }
+
+    // Use 20 levels (matching the match game's LEVEL_PROGRESSION)
+    const totalLevels = 20;
+    const allLevels = [];
+    for (let i = 1; i <= totalLevels; i++) {
+      allLevels.push({ id: i, number: i });
+    }
+
+    const currentLevel = this.state.progress.currentLevel || 1;
     const progressMap = {};
     for (const level of allLevels) {
       const num = level.id;
@@ -488,69 +511,10 @@ class App {
   // ================================================================
 
   startLevel(levelId) {
-    const levelConfig = this.levelManager.getLevel(levelId);
-    if (!levelConfig) {
-      this.ui.showToast('Level not found.', 'error');
-      return;
-    }
-
-    this.currentLevelConfig = levelConfig;
-    this.selectedTile = null;
-    this.isAnimating = false;
-    this.isPaused = false;
-    this._pendingPowerup = null;
-
-    // Set theme for this level
+    // Navigate to the match game with the selected level
+    // The match game reads ?level=N and shares localStorage for progress
     const theme = this.state.profile.theme || 'wife';
-    this.themeManager.setTheme(theme);
-    this._applyThemeCSS();
-
-    // Create game engine
-    this.engine = new GameEngine({
-      theme,
-      moves: levelConfig.moves,
-      goals: levelConfig.goals || [],
-      targetScore: levelConfig.starThresholds ? levelConfig.starThresholds[0] : 0,
-    });
-
-    const initialState = this.engine.init();
-
-    // Size and set up renderer
-    const canvas = document.getElementById('game-canvas');
-    if (canvas) {
-      sizeCanvas(canvas);
-      this._destroyRenderer();
-      this.renderer = new Renderer(canvas, theme);
-
-      // Feed initial state to the renderer — it has its own render loop
-      this._syncRenderer();
-
-      // Wire input callbacks from the renderer
-      this.renderer.onClick(({ row, col }) => this._onTileClick(row, col));
-      this.renderer.onSwipe(({ row, col, direction }) => {
-        const deltas = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
-        const [dr, dc] = deltas[direction] || [0, 0];
-        this._onSwipe(row, col, row + dr, col + dc);
-      });
-    }
-
-    // Wire engine events
-    this._bindEngineEvents();
-
-    // Play gameplay music with crossfade
-    this.audio.playMusicForScreen('gameplay');
-
-    // Show HUD
-    this.ui.hideAllScreens();
-    this.ui.showScreen('hud', {
-      level: levelId,
-      score: 0,
-      movesRemaining: levelConfig.moves,
-      powerups: this._getInventoryForHUD(),
-    });
-
-    // Start hint timer
-    this._resetHintTimer();
+    window.location.href = `match.html?level=${levelId}&theme=${theme}`;
   }
 
   // ================================================================
