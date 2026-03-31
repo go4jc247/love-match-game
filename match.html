@@ -474,13 +474,18 @@ const TOOL_UNLOCK_LEVEL = {
   11: 15, // Love Letter — unlocked at level 15
 };
 
+let newlyUnlockedTool = 0; // tool number that was just unlocked this level (0 = none)
+
 function initToolInventory() {
   toolInventory = {};
+  newlyUnlockedTool = 0;
   for (const t of TOOLS) {
     const unlockLvl = TOOL_UNLOCK_LEVEL[t.tool] || 1;
     if (level >= unlockLvl) {
       // Give 1-2 of each unlocked tool, Love Letter is rare
       toolInventory[t.tool] = t.tool === 11 ? 1 : 2;
+      // Track if this tool is brand new at this level
+      if (level === unlockLvl) newlyUnlockedTool = t.tool;
     } else {
       toolInventory[t.tool] = 0;
     }
@@ -3376,6 +3381,26 @@ function drawToolbar() {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(count, bx, by);
+    }
+
+    // "NEW" badge for freshly unlocked tool (pulsing glow)
+    if (tool.tool === newlyUnlockedTool && count > 0) {
+      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 300);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      const newBadgeW = r.w * 0.55;
+      const newBadgeH = r.h * 0.22;
+      const nbx = r.x + (r.w - newBadgeW) / 2;
+      const nby = r.y - newBadgeH * 0.4;
+      drawRoundedRect(nbx, nby, newBadgeW, newBadgeH, newBadgeH / 2);
+      ctx.fillStyle = '#ff9800';
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold ' + (newBadgeH * 0.7) + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('NEW', nbx + newBadgeW / 2, nby + newBadgeH / 2);
+      ctx.restore();
     }
   }
 
