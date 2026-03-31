@@ -399,9 +399,13 @@ class App {
 
     this.audio.playMusicForScreen('mainMenu');
 
-    const unreadNotes = this.spouseConnection
-      ? this.spouseConnection.getUnreadCount()
-      : 0;
+    // Unread count from cached spouse data (gist sync)
+    let unreadNotes = 0;
+    if (this._cachedSpouseData && this.gistSync.isConfigured()) {
+      const spouseNotes = this._cachedSpouseData.loveNotes || [];
+      // We'd need readNotes from our data, but for now count all notes as a badge
+      unreadNotes = spouseNotes.length;
+    }
 
     this.ui.showScreen('mainMenu', {
       profile: this.state.profile,
@@ -475,20 +479,54 @@ class App {
     }
   }
 
-  showLoveNotes() {
+  async showLoveNotes() {
     this.audio.playMusicForScreen('loveNotes');
-    if (!this.spouseConnection) {
-      this.ui.showToast('Spouse connection not set up.', 'info');
-      return;
+
+    // Build inbox (spouse's notes to me) and sent (my notes to spouse)
+    let inbox = [];
+    let sent = [];
+
+    if (this.gistSync.isConfigured()) {
+      try {
+        // Pull fresh data
+        const [myData, spouseData] = await Promise.all([
+          this.gistSync._readMyData(),
+          this.gistSync.pullSpouseData(),
+        ]);
+
+        // My sent notes
+        sent = (myData?.loveNotes || []).map(n => ({
+          id: n.id,
+          from: 'You',
+          text: n.message,
+          preview: n.message?.substring(0, 60),
+          time: n.sentAt ? new Date(n.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+          read: true,
+        })).reverse();
+
+        // Spouse's notes (my inbox)
+        const readNotes = myData?.readNotes || [];
+        inbox = (spouseData?.loveNotes || []).map(n => ({
+          id: n.id,
+          from: n.from || 'Spouse',
+          text: n.message,
+          preview: n.message?.substring(0, 60),
+          time: n.sentAt ? new Date(n.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+          read: readNotes.includes(n.id),
+        })).reverse();
+
+      } catch (err) {
+        console.warn('[LoveNotes] Error loading notes:', err);
+        this.ui.showToast('Could not load notes: ' + err.message, 'error');
+      }
+    } else {
+      this.ui.showToast('Connect to your spouse first (Us tab).', 'info');
     }
 
-    const notes = this.spouseConnection.getLoveNotes();
-    const gender = this.state.profile.gender || 'wife';
-    const prompt = this.spouseConnection.getDailyPrompt(gender);
-
     this.ui.showScreen('loveNotes', {
-      notes,
-      dailyPrompt: prompt,
+      inbox,
+      sent,
+      dailyPrompt: null,
     });
   }
 
@@ -1202,26 +1240,32 @@ class App {
   // Love Notes Handlers
   // ================================================================
 
-  _onSendLoveNote(text) {
-    if (!this.spouseConnection) return;
+  async _onSendLoveNote(text) {
+    if (!this.gistSync.isConfigured()) {
+      this.ui.showToast('Connect to your spouse first!', 'info');
+      return;
+    }
+    // If text passed from compose, use it; otherwise prompt
+    if (!text) {
+      text = prompt('Write a love note to your spouse:');
+    }
+    if (!text) return;
     try {
-      this.spouseConnection.sendLoveNote(text, 'default');
+      await this.gistSync.sendLoveNote(text);
       this.ui.showToast('Love note sent!', 'success');
       this.audio.playSound('send');
+      // Refresh the love notes screen
+      this.showLoveNotes();
     } catch (err) {
-      this.ui.showToast(err.message, 'error');
+      this.ui.showToast('Failed to send: ' + err.message, 'error');
     }
   }
 
-  _onOpenLoveNote(noteId) {
-    if (!this.spouseConnection) return;
+  async _onOpenLoveNote(noteId) {
+    if (!this.gistSync.isConfigured()) return;
     try {
-      const result = this.spouseConnection.markNoteRead(noteId);
-      if (result && result.bonusPoints > 0) {
-        this.state.progress.totalScore += result.bonusPoints;
-        this.ui.showToast(`+${result.bonusPoints} love note bonus!`, 'success');
-        this.saveGame();
-      }
+      await this.gistSync.markNoteRead(noteId);
+      this.ui.showToast('Note opened!', 'info');
     } catch (err) {
       console.warn('Error marking note read:', err);
     }
@@ -1381,21 +1425,6 @@ class App {
     this._cachedSpouseData = null;
     this.ui.showToast('Disconnected.', 'info');
     this.showSpouseDashboard();
-  }
-
-  async _onSendLoveNote() {
-    if (!this.gistSync.isConfigured()) {
-      this.ui.showToast('Connect to your spouse first!', 'info');
-      return;
-    }
-    const message = prompt('Write a love note to your spouse:');
-    if (!message) return;
-    try {
-      await this.gistSync.sendLoveNote(message);
-      this.ui.showToast('Love note sent!', 'success');
-    } catch (err) {
-      this.ui.showToast('Failed to send: ' + err.message, 'error');
-    }
   }
 
   _onSendGift() {
