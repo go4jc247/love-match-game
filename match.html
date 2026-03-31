@@ -207,6 +207,7 @@ for (const t of TOOLS) {
 const TOOLBAR_SLOTS = 5;
 let toolbarPage = 0; // which page of tools (0 = tools 1-5, 1 = tools 6-10)
 let activeTool = null; // tool number if a tool is selected, null otherwise
+let lastSwap = null; // {r1, c1, r2, c2} — positions of last swap for tool spawn placement
 
 // Screen shake
 let screenShake = { x: 0, y: 0, intensity: 0, decay: 0.88 };
@@ -667,6 +668,7 @@ function doSwap(r1, c1, r2, c2) {
         moves--;
       }
       cascadeLevel = 0;
+      lastSwap = { r1, c1, r2, c2 };
       processMatches();
     }
   }));
@@ -734,13 +736,30 @@ function processMatches() {
       allMatched.add(tileKey(pos.row, pos.col));
     }
 
-    // Queue tool spawn
-    if (group.spawnTool !== null && group.spawnAt) {
-      toolSpawns.push({ toolNum: group.spawnTool, row: group.spawnAt.row, col: group.spawnAt.col });
+    // Queue tool spawn — place at the swapped tile that's part of this match
+    if (group.spawnTool !== null) {
+      let spawnR = group.spawnAt ? group.spawnAt.row : group.cells[0].row;
+      let spawnC = group.spawnAt ? group.spawnAt.col : group.cells[0].col;
+
+      // If we know which tiles were swapped, prefer that position
+      if (lastSwap) {
+        const cellSet = new Set(group.cells.map(c => tileKey(c.row, c.col)));
+        // Check if either swapped tile is in this match group
+        if (cellSet.has(tileKey(lastSwap.r1, lastSwap.c1))) {
+          spawnR = lastSwap.r1;
+          spawnC = lastSwap.c1;
+        } else if (cellSet.has(tileKey(lastSwap.r2, lastSwap.c2))) {
+          spawnR = lastSwap.r2;
+          spawnC = lastSwap.c2;
+        }
+      }
+
+      toolSpawns.push({ toolNum: group.spawnTool, row: spawnR, col: spawnC });
     }
   }
 
   score += totalScore;
+  lastSwap = null; // Only use swap position for the initial match, not cascades
 
   // Impact effects — screen shake, flash, sparkles
   const matchCount = allMatched.size;
