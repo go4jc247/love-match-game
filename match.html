@@ -308,10 +308,12 @@ function scoreForMatch(length) {
 }
 
 function getMatchGroups() {
-  // Returns arrays of matched positions grouped by contiguous runs
-  const groups = [];
+  // Returns array of { cells: [{row,col}], shape: string, spawnTool: number|null, spawnAt: {row,col}|null }
+  const results = [];
+  const claimed = new Set(); // prevent double-counting cells
 
-  // Horizontal runs
+  // First pass: find all horizontal and vertical runs
+  const hRuns = []; // {row, startCol, len, type}
   for (let r = 0; r < ROWS; r++) {
     let c = 0;
     while (c < COLS) {
@@ -319,16 +321,12 @@ function getMatchGroups() {
       if (t < 0) { c++; continue; }
       let len = 1;
       while (c + len < COLS && grid[r][c + len] === t) len++;
-      if (len >= 3) {
-        const g = [];
-        for (let i = 0; i < len; i++) g.push({ row: r, col: c + i });
-        groups.push(g);
-      }
+      if (len >= 3) hRuns.push({ row: r, col: c, len, type: t });
       c += len;
     }
   }
 
-  // Vertical runs
+  const vRuns = []; // {col, startRow, len, type}
   for (let c = 0; c < COLS; c++) {
     let r = 0;
     while (r < ROWS) {
@@ -336,30 +334,130 @@ function getMatchGroups() {
       if (t < 0) { r++; continue; }
       let len = 1;
       while (r + len < ROWS && grid[r + len][c] === t) len++;
-      if (len >= 3) {
-        const g = [];
-        for (let i = 0; i < len; i++) g.push({ row: r + i, col: c });
-        groups.push(g);
-      }
+      if (len >= 3) vRuns.push({ row: r, col: c, len, type: t });
       r += len;
     }
   }
 
-  // 2x2 squares
-  for (let r = 0; r <= ROWS - 2; r++) {
-    for (let c = 0; c <= COLS - 2; c++) {
-      const t = grid[r][c];
-      if (t < 0) continue;
-      if (grid[r][c+1] === t && grid[r+1][c] === t && grid[r+1][c+1] === t) {
-        groups.push([
-          { row: r, col: c }, { row: r, col: c+1 },
-          { row: r+1, col: c }, { row: r+1, col: c+1 }
-        ]);
+  // Detect Cross shapes first (highest priority): a horizontal and vertical run of 3+
+  // intersecting at a cell, with at least 2 cells extending in each of the 4 directions
+  for (const h of hRuns) {
+    for (const v of vRuns) {
+      if (h.type !== v.type) continue;
+      // Find intersection
+      const intR = h.row;
+      const intC = v.col;
+      if (intC < h.col || intC >= h.col + h.len) continue;
+      if (intR < v.row || intR >= v.row + v.len) continue;
+      // Check it extends in all 4 directions from intersection
+      const left = intC - h.col;
+      const right = (h.col + h.len - 1) - intC;
+      const up = intR - v.row;
+      const down = (v.row + v.len - 1) - intR;
+      if (left >= 1 && right >= 1 && up >= 1 && down >= 1) {
+        // It's a cross/plus! Combine all cells
+        const cells = [];
+        const cellSet = new Set();
+        for (let i = 0; i < h.len; i++) {
+          const k = tileKey(h.row, h.col + i);
+          if (!cellSet.has(k)) { cells.push({ row: h.row, col: h.col + i }); cellSet.add(k); }
+        }
+        for (let i = 0; i < v.len; i++) {
+          const k = tileKey(v.row + i, v.col);
+          if (!cellSet.has(k)) { cells.push({ row: v.row + i, col: v.col }); cellSet.add(k); }
+        }
+        // Only add if not already claimed
+        const anyClaimed = cells.some(c => claimed.has(tileKey(c.row, c.col)));
+        if (!anyClaimed) {
+          cells.forEach(c => claimed.add(tileKey(c.row, c.col)));
+          results.push({ cells, shape: 'cross', spawnTool: 3, spawnAt: { row: intR, col: intC } });
+          h._used = true;
+          v._used = true;
+        }
       }
     }
   }
 
-  return groups;
+  // Detect L/T shapes: a horizontal run and vertical run of 3+ sharing a type that intersect
+  // but don't form a cross (only extend in 3 directions from intersection, not 4)
+  for (const h of hRuns) {
+    if (h._used) continue;
+    for (const v of vRuns) {
+      if (v._used) continue;
+      if (h.type !== v.type) continue;
+      const intR = h.row;
+      const intC = v.col;
+      if (intC < h.col || intC >= h.col + h.len) continue;
+      if (intR < v.row || intR >= v.row + v.len) continue;
+      // Not a cross (already handled above), so it's an L or T
+      const cells = [];
+      const cellSet = new Set();
+      for (let i = 0; i < h.len; i++) {
+        const k = tileKey(h.row, h.col + i);
+        if (!cellSet.has(k)) { cells.push({ row: h.row, col: h.col + i }); cellSet.add(k); }
+      }
+      for (let i = 0; i < v.len; i++) {
+        const k = tileKey(v.row + i, v.col);
+        if (!cellSet.has(k)) { cells.push({ row: v.row + i, col: v.col }); cellSet.add(k); }
+      }
+      const anyClaimed = cells.some(c => claimed.has(tileKey(c.row, c.col)));
+      if (!anyClaimed) {
+        cells.forEach(c => claimed.add(tileKey(c.row, c.col)));
+        results.push({ cells, shape: 'LT', spawnTool: 1, spawnAt: { row: intR, col: intC } });
+        h._used = true;
+        v._used = true;
+      }
+    }
+  }
+
+  // Detect 5-in-a-row, 4-in-a-row, 3-in-a-row (line runs not yet claimed)
+  const allRuns = [...hRuns.filter(r => !r._used), ...vRuns.filter(r => !r._used)];
+  // Sort longest first so 5-in-a-row gets priority
+  allRuns.sort((a, b) => b.len - a.len);
+
+  for (const run of allRuns) {
+    const isH = ('row' in run && hRuns.includes(run));
+    const cells = [];
+    for (let i = 0; i < run.len; i++) {
+      const r = isH ? run.row : run.row + i;
+      const c = isH ? run.col + i : run.col;
+      cells.push({ row: r, col: c });
+    }
+    const anyClaimed = cells.some(c => claimed.has(tileKey(c.row, c.col)));
+    if (anyClaimed) continue;
+
+    cells.forEach(c => claimed.add(tileKey(c.row, c.col)));
+
+    if (run.len >= 5) {
+      const mid = cells[Math.floor(cells.length / 2)];
+      results.push({ cells, shape: '5row', spawnTool: 3, spawnAt: mid });
+    } else if (run.len === 4) {
+      const mid = cells[Math.floor(cells.length / 2)];
+      results.push({ cells, shape: '4row', spawnTool: 2, spawnAt: mid });
+    } else {
+      results.push({ cells, shape: '3row', spawnTool: null, spawnAt: null });
+    }
+  }
+
+  // Detect 2x2 squares (cells not already claimed)
+  for (let r = 0; r <= ROWS - 2; r++) {
+    for (let c = 0; c <= COLS - 2; c++) {
+      const t = grid[r][c];
+      if (t < 0) continue;
+      if (grid[r][c+1] !== t || grid[r+1][c] !== t || grid[r+1][c+1] !== t) continue;
+      const cells = [
+        { row: r, col: c }, { row: r, col: c+1 },
+        { row: r+1, col: c }, { row: r+1, col: c+1 }
+      ];
+      const anyClaimed = cells.some(c => claimed.has(tileKey(c.row, c.col)));
+      if (anyClaimed) continue;
+      cells.forEach(c => claimed.add(tileKey(c.row, c.col)));
+      // Spawn potion at bottom-right of square
+      results.push({ cells, shape: '2x2', spawnTool: 6, spawnAt: { row: r+1, col: c+1 } });
+    }
+  }
+
+  return results;
 }
 
 // ── Animation System ──
@@ -494,27 +592,34 @@ function processMatches() {
   cascadeLevel++;
   const multiplier = cascadeLevel;
 
-  // Collect all matched positions
+  // Collect all matched positions and track tool spawns
   const allMatched = new Set();
   let totalScore = 0;
+  const toolSpawns = []; // {toolNum, row, col} — tools to add to inventory
 
   for (const group of groups) {
-    const pts = scoreForMatch(group.length) * multiplier;
+    const pts = scoreForMatch(group.cells.length) * multiplier;
     totalScore += pts;
 
     // Score popup at center of group
-    const centerR = group[Math.floor(group.length / 2)].row;
-    const centerC = group[Math.floor(group.length / 2)].col;
+    const centerIdx = Math.floor(group.cells.length / 2);
+    const centerR = group.cells[centerIdx].row;
+    const centerC = group.cells[centerIdx].col;
     scorePopups.push({
       x: boardX + centerC * tileSize + tileSize / 2,
       y: boardY + centerR * tileSize + tileSize / 2,
-      text: '+' + pts,
+      text: '+' + pts + (group.shape !== '3row' ? ' ' + group.shape : ''),
       alpha: 1,
       dy: 0,
     });
 
-    for (const pos of group) {
+    for (const pos of group.cells) {
       allMatched.add(tileKey(pos.row, pos.col));
+    }
+
+    // Queue tool spawn
+    if (group.spawnTool !== null && group.spawnAt) {
+      toolSpawns.push({ toolNum: group.spawnTool, row: group.spawnAt.row, col: group.spawnAt.col });
     }
   }
 
@@ -539,6 +644,19 @@ function processMatches() {
       grid[row][col] = -1;
       clearOverride(row, col);
       removingTiles.delete(tileKey(row, col));
+    }
+    // Spawn tools from special matches
+    for (const spawn of toolSpawns) {
+      toolInventory[spawn.toolNum] = (toolInventory[spawn.toolNum] || 0) + 1;
+      const toolDef = TOOLS.find(t => t.tool === spawn.toolNum);
+      if (toolDef) {
+        scorePopups.push({
+          x: boardX + spawn.col * tileSize + tileSize / 2,
+          y: boardY + spawn.row * tileSize + tileSize / 2,
+          text: '+' + toolDef.name + '!',
+          alpha: 1, dy: -15,
+        });
+      }
     }
     // Apply gravity
     applyGravity();
@@ -1066,6 +1184,287 @@ function useCloud() {
   }));
 }
 
+// ── Tool Combos ──
+function getCombo(toolA, toolB) {
+  // Normalize order so (A,B) and (B,A) match the same combo
+  const pair = [toolA, toolB].sort((a, b) => a - b);
+  const key = pair[0] + ',' + pair[1];
+
+  const combos = {
+    '3,3': comboRainbowRainbow,   // Rainbow Star + Rainbow Star → clear everything
+    '1,1': comboBombBomb,          // Bomb + Bomb → 5x5 mega explosion
+    '2,2': comboLightningLightning, // Lightning + Lightning → full row + full column
+    '1,2': comboBombLightning,     // Bomb + Lightning → full row + full column
+    '1,3': comboRainbowBomb,       // Rainbow Star + Bomb → all of type → bombs → detonate
+    '2,3': comboRainbowLightning,  // Rainbow Star + Lightning → all of type → lightning → fire
+  };
+
+  return combos[key] || null;
+}
+
+// Rainbow Star + Rainbow Star → Love Letter (clear entire board)
+function comboRainbowRainbow() {
+  scorePopups.push({ x: W / 2, y: H / 2 - 40, text: 'LOVE LETTER!', alpha: 1, dy: 0 });
+  activateLoveLetter();
+}
+
+// Bomb + Bomb → 5x5 mega explosion at center of board
+function comboBombBomb() {
+  locked = true;
+  const centerR = Math.floor(ROWS / 2);
+  const centerC = Math.floor(COLS / 2);
+  const targets = [];
+  for (let dr = -2; dr <= 2; dr++) {
+    for (let dc = -2; dc <= 2; dc++) {
+      const r = centerR + dr, c = centerC + dc;
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+        targets.push({ row: r, col: c });
+      }
+    }
+  }
+
+  const pts = targets.length * 40;
+  score += pts;
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'MEGA BOMB +' + pts, alpha: 1, dy: 0 });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  animations.push(new Animation(400, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      const scale = t < 0.2 ? 1 + et * 0.5 : 1.5 - (et - 0.2) * 1.8;
+      setOverride(tgt.row, tgt.col, { scale: Math.max(0, scale), alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 3);
+    }
+    applyGravity();
+  }));
+}
+
+// Lightning + Lightning → clears a random full row AND a random full column
+function comboLightningLightning() {
+  locked = true;
+  const row = Math.floor(Math.random() * ROWS);
+  const col = Math.floor(Math.random() * COLS);
+  const targets = [];
+  const seen = new Set();
+  for (let c = 0; c < COLS; c++) {
+    if (grid[row][c] >= 0) { targets.push({ row, col: c }); seen.add(tileKey(row, c)); }
+  }
+  for (let r = 0; r < ROWS; r++) {
+    const k = tileKey(r, col);
+    if (grid[r][col] >= 0 && !seen.has(k)) { targets.push({ row: r, col }); seen.add(k); }
+  }
+
+  const pts = targets.length * 30;
+  score += pts;
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'DOUBLE LIGHTNING +' + pts, alpha: 1, dy: 0 });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  animations.push(new Animation(350, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+    }
+    applyGravity();
+  }));
+}
+
+// Bomb + Lightning → clears full row + full column from center
+function comboBombLightning() {
+  locked = true;
+  const row = Math.floor(ROWS / 2);
+  const col = Math.floor(COLS / 2);
+  const targets = [];
+  const seen = new Set();
+  // Full row
+  for (let c = 0; c < COLS; c++) {
+    if (grid[row][c] >= 0) { targets.push({ row, col: c }); seen.add(tileKey(row, c)); }
+  }
+  // Full column
+  for (let r = 0; r < ROWS; r++) {
+    const k = tileKey(r, col);
+    if (grid[r][col] >= 0 && !seen.has(k)) { targets.push({ row: r, col }); seen.add(k); }
+  }
+  // Also 3x3 around intersection
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      const r = row + dr, c = col + dc;
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+        const k = tileKey(r, c);
+        if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+      }
+    }
+  }
+
+  const pts = targets.length * 35;
+  score += pts;
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'BOMB+LIGHTNING +' + pts, alpha: 1, dy: 0 });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  animations.push(new Animation(400, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
+    }
+    applyGravity();
+  }));
+}
+
+// Rainbow Star + Bomb → turns all of a random type into bombs, then detonates each
+function comboRainbowBomb() {
+  locked = true;
+  // Pick a random type that exists on board
+  const typeCounts = {};
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] >= 0) typeCounts[grid[r][c]] = (typeCounts[grid[r][c]] || 0) + 1;
+    }
+  }
+  const types = Object.keys(typeCounts).map(Number);
+  const targetType = types[Math.floor(Math.random() * types.length)];
+
+  // Find all cells of that type
+  const typeCells = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === targetType) typeCells.push({ row: r, col: c });
+    }
+  }
+
+  scorePopups.push({ x: W / 2, y: H / 2 - 40, text: 'RAINBOW BOMB!', alpha: 1, dy: 0 });
+
+  // Phase 1: Flash the type cells, then explode 3x3 around each
+  animations.push(new Animation(400, (t) => {
+    const pulse = Math.sin(t * Math.PI * 4);
+    for (const cell of typeCells) {
+      setOverride(cell.row, cell.col, { scale: 1 + pulse * 0.2 });
+    }
+  }, () => {
+    for (const cell of typeCells) clearOverride(cell.row, cell.col);
+    // Collect all cells in 3x3 around each type cell
+    const allTargets = new Set();
+    for (const cell of typeCells) {
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const r = cell.row + dr, c = cell.col + dc;
+          if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+            allTargets.add(tileKey(r, c));
+          }
+        }
+      }
+    }
+    const targets = [];
+    allTargets.forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      targets.push({ row: r, col: c });
+      removingTiles.add(k);
+    });
+
+    const pts = targets.length * 30;
+    score += pts;
+    scorePopups.push({ x: W / 2, y: H / 2, text: '+' + pts, alpha: 1, dy: 0 });
+
+    animations.push(new Animation(300, (t) => {
+      const et = easeOut(t);
+      for (const tgt of targets) {
+        setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+      }
+    }, () => {
+      for (const t of targets) {
+        grid[t.row][t.col] = -1;
+        clearOverride(t.row, t.col);
+        removingTiles.delete(tileKey(t.row, t.col));
+        spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
+      }
+      applyGravity();
+    }));
+  }));
+}
+
+// Rainbow Star + Lightning → turns all of a random type into lightning, clears their rows
+function comboRainbowLightning() {
+  locked = true;
+  const typeCounts = {};
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] >= 0) typeCounts[grid[r][c]] = (typeCounts[grid[r][c]] || 0) + 1;
+    }
+  }
+  const types = Object.keys(typeCounts).map(Number);
+  const targetType = types[Math.floor(Math.random() * types.length)];
+
+  const typeCells = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === targetType) typeCells.push({ row: r, col: c });
+    }
+  }
+
+  scorePopups.push({ x: W / 2, y: H / 2 - 40, text: 'RAINBOW LIGHTNING!', alpha: 1, dy: 0 });
+
+  // Phase 1: Flash type cells
+  animations.push(new Animation(400, (t) => {
+    const pulse = Math.sin(t * Math.PI * 4);
+    for (const cell of typeCells) {
+      setOverride(cell.row, cell.col, { scale: 1 + pulse * 0.2 });
+    }
+  }, () => {
+    for (const cell of typeCells) clearOverride(cell.row, cell.col);
+    // Collect all cells in the rows of each type cell
+    const allTargets = new Set();
+    for (const cell of typeCells) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[cell.row][c] >= 0) allTargets.add(tileKey(cell.row, c));
+      }
+    }
+    const targets = [];
+    allTargets.forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      targets.push({ row: r, col: c });
+      removingTiles.add(k);
+    });
+
+    const pts = targets.length * 25;
+    score += pts;
+    scorePopups.push({ x: W / 2, y: H / 2, text: '+' + pts, alpha: 1, dy: 0 });
+
+    animations.push(new Animation(300, (t) => {
+      const et = easeOut(t);
+      for (const tgt of targets) {
+        setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+      }
+    }, () => {
+      for (const t of targets) {
+        grid[t.row][t.col] = -1;
+        clearOverride(t.row, t.col);
+        removingTiles.delete(tileKey(t.row, t.col));
+      }
+      applyGravity();
+    }));
+  }));
+}
+
 // ── Input Handling ──
 function canvasToGrid(cx, cy) {
   const col = Math.floor((cx - boardX) / tileSize);
@@ -1166,8 +1565,31 @@ function handleToolbarClick(cx, cy) {
         toolInventory[11] = (toolInventory[11] || 0) - 1;
         activeTool = null;
         activateLoveLetter();
+      } else if (activeTool !== null && activeTool !== tool.tool) {
+        // Two different tools selected — check for combo
+        const combo = getCombo(activeTool, tool.tool);
+        if (combo) {
+          toolInventory[activeTool]--;
+          toolInventory[tool.tool]--;
+          activeTool = null;
+          combo();
+        } else {
+          activeTool = tool.tool; // no combo, just switch selection
+        }
       } else if (activeTool === tool.tool) {
-        activeTool = null; // deselect
+        // Same tool tapped twice — check for same-tool combo
+        if ((tool.tool === 1 || tool.tool === 2 || tool.tool === 3) && count >= 2) {
+          const combo = getCombo(tool.tool, tool.tool);
+          if (combo) {
+            toolInventory[tool.tool] -= 2;
+            activeTool = null;
+            combo();
+          } else {
+            activeTool = null;
+          }
+        } else {
+          activeTool = null; // deselect
+        }
       } else {
         activeTool = tool.tool; // select
       }
