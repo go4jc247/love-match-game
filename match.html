@@ -258,18 +258,25 @@ function generateBoardMask(pct) {
   }
 }
 
-function pickGemsForLevel(lvl) {
-  const cfg = getLevelConfig(lvl);
-  const numGems = cfg.gems;
-  // Deterministic shuffle based on level so same level = same gems
+// Master gem order — shuffled once deterministically, then gems are drawn in order
+// This ensures each level builds on the previous (keeps old gems, adds new ones)
+const MASTER_GEM_ORDER = (() => {
   const shuffled = [...ALL_GEMS];
-  let seed = lvl * 2654435761;
+  let seed = 42 * 2654435761; // fixed seed so order never changes
   for (let i = shuffled.length - 1; i > 0; i--) {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
     const j = seed % (i + 1);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
-  return shuffled.slice(0, numGems);
+  return shuffled;
+})();
+
+function pickGemsForLevel(lvl) {
+  const cfg = getLevelConfig(lvl);
+  const numGems = cfg.gems;
+  // Always take the first N gems from the master order
+  // This way level 3 (4 gems) has the same 3 gems as level 1 plus 1 new one
+  return MASTER_GEM_ORDER.slice(0, numGems);
 }
 
 // Current level tile types
