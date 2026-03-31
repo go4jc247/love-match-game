@@ -8,7 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="Love Match">
 <meta name="theme-color" content="#FF69B4">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icons/pwa-icon-192.png">
+<link rel="apple-touch-icon" sizes="1024x1024" href="icons/pwa-icon-1024.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icons/pwa-icon-192.png">
 <title>Love Match</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -89,32 +90,73 @@ const PINK_HEART_FILE = 'icons/sheet5-icon-3.png';
 // ── Level Progression ──
 // Each level defines: gems count, board active %, time, score target, and what's new
 const LEVEL_PROGRESSION = [
-  // lvl 1:  3 gems, 5x5 board, learn basic matching
-  { gems: 3, cols: 5, rows: 5, boardPct: 1.0, time: 60,  target: 300,  intro: 'Match 3 in a row to score!' },
-  // lvl 2:  3 gems, 5x6 board, introduce 4-in-a-row → Lightning
-  { gems: 3, cols: 6, rows: 5, boardPct: 1.0, time: 70,  target: 500,  intro: 'Match 4 in a row to create a Lightning Bolt!' },
-  // lvl 3:  4 gems, 6x6 board, introduce 2x2 → Potion
-  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 75,  target: 800,  intro: 'Match a 2×2 square to create a Potion!' },
-  // lvl 4:  4 gems, 6x6 board, introduce L/T shape → Bomb
-  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 80,  target: 1000, intro: 'Match an L or T shape to create a Bomb!' },
-  // lvl 5:  5 gems, 6x7 board, introduce 5-in-a-row → Rainbow Star
-  { gems: 5, cols: 7, rows: 6, boardPct: 1.0, time: 80,  target: 1200, intro: 'Match 5 in a row for a Rainbow Star!' },
-  // lvl 6:  5 gems, 7x7 board, introduce obstacles
-  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 85,  target: 1500, intro: 'Obstacles appear! Clear tiles next to them to break them.' },
-  // lvl 7:  5 gems, 7x7 diamond, introduce tool combos
-  { gems: 5, cols: 7, rows: 7, boardPct: 0.85, time: 85, target: 1800, intro: 'Combine two tools for powerful combos!' },
-  // lvl 8:  6 gems, 7x8 board
-  { gems: 6, cols: 8, rows: 7, boardPct: 1.0, time: 85,  target: 2000, intro: 'New gems appear — more variety, more challenge!' },
-  // lvl 9:  6 gems, 8x8 board, introduce Cross → Rainbow Star
-  { gems: 6, cols: 8, rows: 8, boardPct: 0.85, time: 90, target: 2500, intro: 'Match a cross/plus shape for a Rainbow Star!' },
-  // lvl 10: 6 gems, 8x8 board
-  { gems: 6, cols: 8, rows: 8, boardPct: 0.90, time: 90, target: 3000, intro: 'Level 10 — things are heating up!' },
-  // lvl 11: 7 gems, 8x8 full
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 3500, intro: null },
-  // lvl 12: 7 gems, 8x8 full
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 4000, intro: null },
-  // lvl 13+: 7 gems, 8x8 full board
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 4500, intro: null },
+  // ── Tutorial Arc (levels 1-5): Learn core mechanics ──
+  // lvl 1:  3 gems, 5x5, basic matching
+  { gems: 3, cols: 5, rows: 5, boardPct: 1.0, time: 60,  target: 300,
+    intro: 'Match 3 in a row to clear tiles and score points!' },
+  // lvl 2:  3 gems, 5x6, introduce 4-in-a-row → Lightning
+  { gems: 3, cols: 6, rows: 5, boardPct: 1.0, time: 70,  target: 500,
+    intro: 'Match 4 in a row to create a Lightning Bolt! It clears an entire row or column.' },
+  // lvl 3:  4 gems, 6x6, introduce 2x2 → Potion
+  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 75,  target: 800,
+    intro: 'Match a 2×2 square to create a Potion! It transforms nearby tiles.' },
+  // lvl 4:  4 gems, 6x6, introduce L/T shape → Bomb
+  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 80,  target: 1000,
+    intro: 'Match an L or T shape to create a Bomb! It explodes a 3×3 area.' },
+  // lvl 5:  4 gems, 7x6, introduce 5-in-a-row → Rainbow Star
+  { gems: 4, cols: 7, rows: 6, boardPct: 1.0, time: 80,  target: 1200,
+    intro: 'Match 5 in a row for a Rainbow Star! Swap it with any gem to clear all of that type.' },
+
+  // ── Growth Arc (levels 6-10): Board expands, new challenges ──
+  // lvl 6:  5 gems, 7x7, introduce obstacles
+  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 85,  target: 1500,
+    intro: 'Watch out! Obstacles block your path. Clear tiles next to them to break them.' },
+  // lvl 7:  5 gems, 7x7 diamond shape, introduce tool combos
+  { gems: 5, cols: 7, rows: 7, boardPct: 0.85, time: 85, target: 1800,
+    intro: 'Tap two different tools in your toolbar to combine them for powerful effects!' },
+  // lvl 8:  5 gems, 8x7, introduce cross/plus → Rainbow Star
+  { gems: 5, cols: 8, rows: 7, boardPct: 1.0, time: 85,  target: 2000,
+    intro: 'Match a cross/plus shape to also create a Rainbow Star!' },
+  // lvl 9:  6 gems, 8x8 diamond, more gem variety
+  { gems: 6, cols: 8, rows: 8, boardPct: 0.85, time: 90, target: 2500,
+    intro: 'A new gem appears! More variety means more strategy.' },
+  // lvl 10: 6 gems, 8x8 corners-cut, milestone level
+  { gems: 6, cols: 8, rows: 8, boardPct: 0.90, time: 90, target: 3000,
+    intro: 'Level 10! Use everything you have learned. Chain combos for big points!' },
+
+  // ── Challenge Arc (levels 11-15): Full board, harder goals ──
+  // lvl 11: 6 gems, 8x8 full, introduce Stopwatch tip
+  { gems: 6, cols: 8, rows: 8, boardPct: 1.0, time: 85,  target: 3500,
+    intro: 'Running low on time? Tap the Stopwatch in your toolbar to add 15 seconds!' },
+  // lvl 12: 6 gems, 8x8 cross shape, tighter time
+  { gems: 6, cols: 8, rows: 8, boardPct: 0.80, time: 80, target: 3800,
+    intro: 'The board has a tricky shape. Plan your moves carefully!' },
+  // lvl 13: 7 gems, 8x8 full, max gem types
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 85,  target: 4200,
+    intro: 'All gem types are in play now! Look for matches everywhere.' },
+  // lvl 14: 7 gems, 8x8 diamond, heavy obstacles
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 85, target: 4800,
+    intro: 'More obstacles than ever. Use Bombs and Lightning to break through!' },
+  // lvl 15: 7 gems, 8x8 full, high target
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 5500,
+    intro: 'Halfway there! Chain reactions and combos are the key to big scores.' },
+
+  // ── Mastery Arc (levels 16-20): Expert play ──
+  // lvl 16: 7 gems, 8x8 corners-cut, tight timer
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.90, time: 75, target: 6000,
+    intro: 'Less time, bigger goals. Every second counts!' },
+  // lvl 17: 7 gems, 8x8 cross, obstacles + speed
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 80, target: 6500,
+    intro: 'A cross-shaped board with plenty of obstacles. Stay sharp!' },
+  // lvl 18: 7 gems, 8x8 full, very high target
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 85,  target: 7500,
+    intro: 'You are a match master! Can you beat this score?' },
+  // lvl 19: 7 gems, 8x8 diamond, hard mode
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 75, target: 8500,
+    intro: 'Diamond board, tight timer. Make every swap count!' },
+  // lvl 20: 7 gems, 8x8 full, ultimate challenge
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 10000,
+    intro: 'The ultimate challenge! Use all your skills to reach 10,000 points!' },
 ];
 
 function getLevelConfig(lvl) {
@@ -439,17 +481,24 @@ function initGrid() {
 
 function initObstacles() {
   if (level < 6) return; // obstacles start at level 6
-  const obstacleCount = Math.min(2 + Math.floor((level - 5) / 2), 10);
+  // Scale obstacle count: starts at 2, grows with level, caps at 12
+  const obstacleCount = Math.min(2 + Math.floor((level - 5) / 2), 12);
   const types = Object.keys(OBSTACLE_TYPES);
+  // Early obstacle levels only use easier types
+  let availableTypes = types;
+  if (level <= 8) {
+    availableTypes = types.filter(t => OBSTACLE_TYPES[t].maxHp <= 2);
+  }
   let placed = 0;
   let attempts = 0;
   while (placed < obstacleCount && attempts < 200) {
     attempts++;
-    const r = 1 + Math.floor(Math.random() * (ROWS - 2)); // avoid top/bottom edges
-    const c = 1 + Math.floor(Math.random() * (COLS - 2));
+    const r = 1 + Math.floor(Math.random() * (Math.max(1, ROWS - 2)));
+    const c = 1 + Math.floor(Math.random() * (Math.max(1, COLS - 2)));
+    if (r >= ROWS || c >= COLS) continue;
     if (!boardMask[r] || !boardMask[r][c]) continue; // skip voided cells
     if (obstacles[r][c]) continue;
-    const type = types[Math.floor(Math.random() * types.length)];
+    const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
     const def = OBSTACLE_TYPES[type];
     obstacles[r][c] = { type, hp: def.maxHp, maxHp: def.maxHp };
     placed++;
@@ -2110,7 +2159,11 @@ function handleRestartClick(cx, cy) {
 }
 
 function restartGame() {
-  level++;
+  // Only advance to next level if player completed it
+  if (levelComplete) {
+    level++;
+  }
+  // Otherwise retry same level
   setupLevel(level);
   score = 0;
   const cfg = getLevelConfig(level);
@@ -2674,8 +2727,10 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   ctx.fill();
 
-  // Bar fill
-  const maxScore = STAR_THRESHOLDS[2];
+  // Bar fill — based on level target (3 stars = 2x target)
+  const lvlTarget = getLevelConfig(level).target;
+  const maxScore = lvlTarget * 2; // 3 stars at 2x target
+  const starThresholds = [lvlTarget * 0.5, lvlTarget, lvlTarget * 2]; // 1, 2, 3 stars
   const fillW = Math.min(score / maxScore, 1) * barW;
   if (fillW > 0) {
     ctx.save();
@@ -2684,20 +2739,20 @@ function drawHUD() {
     ctx.clip();
     const barGrad = ctx.createLinearGradient(barX, barY, barX + fillW, barY);
     barGrad.addColorStop(0, '#ff6b8a');
-    barGrad.addColorStop(1, '#ff4081');
+    barGrad.addColorStop(1, score >= lvlTarget ? '#4caf50' : '#ff4081');
     ctx.fillStyle = barGrad;
     ctx.fillRect(barX, barY, fillW, barH);
     ctx.restore();
   }
 
-  // Star markers
+  // Star markers at 50%, 100%, 200% of target
   const starChar = '\u2605';
   ctx.font = (tileSize * 0.25) + 'px serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (let i = 0; i < 3; i++) {
-    const sx = barX + (STAR_THRESHOLDS[i] / maxScore) * barW;
-    ctx.fillStyle = score >= STAR_THRESHOLDS[i] ? '#ffd700' : 'rgba(255,255,255,0.6)';
+    const sx = barX + (starThresholds[i] / maxScore) * barW;
+    ctx.fillStyle = score >= starThresholds[i] ? '#ffd700' : 'rgba(255,255,255,0.6)';
     ctx.fillText(starChar, sx, barY + barH / 2);
   }
 
@@ -2774,7 +2829,7 @@ function drawGameOver() {
 
   ctx.fillStyle = '#fff';
   ctx.font = 'bold ' + (tileSize * 0.3) + 'px sans-serif';
-  ctx.fillText('Play Again', W / 2, btnY + btnH / 2);
+  ctx.fillText(levelComplete ? 'Next Level' : 'Try Again', W / 2, btnY + btnH / 2);
 
   ctx.restore();
 }
