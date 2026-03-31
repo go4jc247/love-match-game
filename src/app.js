@@ -1235,22 +1235,29 @@ class App {
 
   async _onQuickConnect(password, channelCode) {
     try {
-      this.ui.showToast('Decrypting...', 'info');
+      this.ui.showToast('Decrypting token...', 'info');
       const token = await decryptToken(password);
       if (!token || !token.startsWith('ghp_')) {
-        this.ui.showToast('Wrong password', 'error');
+        this.ui.showToast('Wrong password — could not decrypt token', 'error');
         return;
       }
+      console.log('[Sync] Token decrypted OK, length:', token.length);
+
+      // Clean channel code
+      channelCode = (channelCode || '').trim().replace(/\s+/g, '');
 
       if (channelCode) {
         // Join existing channel
+        this.ui.showToast(`Joining channel ${channelCode.slice(0, 8)}...`, 'info');
         await this._onJoinChannel(token, channelCode);
       } else {
         // Create new channel
+        this.ui.showToast('Creating new channel...', 'info');
         await this._onCreateChannel(token);
       }
     } catch (err) {
-      this.ui.showToast('Wrong password or decryption failed', 'error');
+      console.error('[Sync] Quick connect error:', err);
+      this.ui.showToast('Wrong password or decryption failed: ' + err.message, 'error');
     }
   }
 
@@ -1259,14 +1266,17 @@ class App {
       this.ui.showToast('Creating channel...', 'info');
       const role = this.state.profile.gender || 'wife';
       const name = this.state.profile.name || '';
+      console.log('[Sync] Creating channel as', role);
       const channelCode = await this.gistSync.createChannel(token, role, name);
+      console.log('[Sync] Channel created:', channelCode);
 
       // Show channel code in a persistent overlay so it can be copied
       this._showChannelCodeOverlay(channelCode);
 
-      this.ui.showToast('Channel created!', 'success');
+      this.ui.showToast(`Channel created as ${role}! Share code with spouse.`, 'success');
       this._startGistPolling();
     } catch (err) {
+      console.error('[Sync] Create failed:', err);
       this.ui.showToast('Failed: ' + err.message, 'error');
     }
   }
@@ -1312,18 +1322,41 @@ class App {
 
   async _onJoinChannel(token, channelCode) {
     try {
+      // Clean up channel code — remove whitespace, newlines, etc.
+      channelCode = (channelCode || '').trim().replace(/\s+/g, '');
+      if (!channelCode) {
+        this.ui.showToast('Please enter a channel code', 'error');
+        return;
+      }
+
       this.ui.showToast('Joining channel...', 'info');
       const role = this.state.profile.gender || 'wife';
       const name = this.state.profile.name || '';
-      console.log('[Sync] Joining as', role, 'with channel', channelCode.slice(0, 8) + '...');
+      console.log('[Sync] Joining as', role, 'with channel', channelCode);
       await this.gistSync.joinChannel(token, channelCode, role, name);
       console.log('[Sync] Joined successfully!');
 
-      this.ui.showToast('Connected to your spouse!', 'success');
+      this.ui.showToast('Joined! Looking for spouse...', 'info');
+
+      // Immediately try to pull spouse data before refreshing dashboard
+      try {
+        const spouseData = await this.gistSync.pullSpouseData();
+        if (spouseData) {
+          this._cachedSpouseData = spouseData;
+          this.ui.showToast(`Connected! Found ${spouseData.name || spouseData.role}`, 'success');
+        } else {
+          this.ui.showToast('Joined channel! Waiting for spouse to connect...', 'success');
+        }
+      } catch (pullErr) {
+        console.warn('[Sync] Could not pull spouse data yet:', pullErr);
+        this.ui.showToast('Joined! Spouse not found yet — they may need to create their channel.', 'info');
+      }
+
       this._startGistPolling();
       this.showSpouseDashboard(); // Refresh the UI
     } catch (err) {
-      this.ui.showToast('Failed: ' + err.message, 'error');
+      console.error('[Sync] Join failed:', err);
+      this.ui.showToast('Join failed: ' + err.message, 'error');
     }
   }
 

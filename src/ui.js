@@ -871,7 +871,7 @@ export class UIManager {
 
     if (syncStatus.configured) {
       // Connected state
-      const spouseFound = data.spouse?.name && data.spouse.name !== 'Spouse';
+      const spouseFound = !!(data.spouse && (data.spouse.role || data.spouse.name));
       connSection.innerHTML = `
         <div class="lm-spouse-dash__conn-status ${spouseFound ? 'lm-spouse-dash__conn-status--ok' : ''}">
           <span class="lm-spouse-dash__conn-dot" style="${spouseFound ? '' : 'background:#ff9800'}"></span>
