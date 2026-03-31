@@ -865,6 +865,65 @@ export class UIManager {
     const title = this._el('h2', 'lm-spouse-dash__title', { html: '\ud83d\udc91 Us' });
     this._append(header, backBtn, title);
 
+    // ── Connection Setup Section ──
+    const syncStatus = data.syncStatus || {}; // { configured, gistId, role, hasToken, polling }
+    const connSection = this._el('div', 'lm-spouse-dash__connect');
+
+    if (syncStatus.configured) {
+      // Connected state
+      connSection.innerHTML = `
+        <div class="lm-spouse-dash__conn-status lm-spouse-dash__conn-status--ok">
+          <span class="lm-spouse-dash__conn-dot"></span>
+          <span>Connected as <strong>${syncStatus.role}</strong></span>
+        </div>
+        <p class="lm-spouse-dash__conn-code">Channel: <code>${(syncStatus.gistId || '').slice(0, 8)}...</code></p>
+      `;
+      const disconnectBtn = this._el('button', 'lm-btn lm-btn--small lm-btn--outline', { text: 'Disconnect' });
+      disconnectBtn.onclick = () => this._emit('spouseDash:disconnect');
+      connSection.appendChild(disconnectBtn);
+    } else {
+      // Not connected — show setup
+      connSection.innerHTML = `
+        <h3 class="lm-spouse-dash__section-title">\ud83d\udd17 Connect to Spouse</h3>
+        <p class="lm-spouse-dash__conn-info">Connect your phones to share progress, send love notes, and gift powerups!</p>
+        <div class="lm-spouse-dash__conn-form">
+          <label class="lm-spouse-dash__label">GitHub Token <span style="font-size:0.75em;color:#999">(gist scope)</span></label>
+          <input class="lm-input" type="password" placeholder="ghp_xxxxxxxxxxxx" id="sync-token-input" autocomplete="off" />
+          <p class="lm-spouse-dash__token-help">
+            <a href="https://github.com/settings/tokens/new?scopes=gist&description=LoveMatch" target="_blank" rel="noopener">Get a token here</a> (check "gist" only)
+          </p>
+        </div>
+      `;
+
+      const btnRow = this._el('div', 'lm-spouse-dash__conn-btns');
+
+      const createBtn = this._el('button', 'lm-btn lm-btn--primary', { html: '\ud83d\udce1 Create Channel' });
+      createBtn.onclick = () => {
+        const token = document.getElementById('sync-token-input')?.value?.trim();
+        if (!token) { alert('Please enter your GitHub token first'); return; }
+        this._emit('spouseDash:createChannel', { token });
+      };
+
+      const joinSection = this._el('div', 'lm-spouse-dash__join-section');
+      joinSection.innerHTML = `
+        <label class="lm-spouse-dash__label">Or join with Channel Code</label>
+        <input class="lm-input" type="text" placeholder="Paste channel code..." id="sync-channel-input" autocomplete="off" />
+      `;
+      const joinBtn = this._el('button', 'lm-btn lm-btn--love', { html: '\ud83d\udc9e Join Channel' });
+      joinBtn.onclick = () => {
+        const token = document.getElementById('sync-token-input')?.value?.trim();
+        const code = document.getElementById('sync-channel-input')?.value?.trim();
+        if (!token) { alert('Please enter your GitHub token first'); return; }
+        if (!code) { alert('Please enter the channel code from your spouse'); return; }
+        this._emit('spouseDash:joinChannel', { token, channelCode: code });
+      };
+
+      this._append(btnRow, createBtn);
+      this._append(joinSection, joinBtn);
+      connSection.appendChild(btnRow);
+      connSection.appendChild(joinSection);
+    }
+
     // Side-by-side progress
     const compare = this._el('div', 'lm-spouse-dash__compare');
     const me = data.me || { name: 'You', level: 1, stars: 0 };
@@ -872,14 +931,14 @@ export class UIManager {
 
     compare.innerHTML = `
       <div class="lm-spouse-dash__player">
-        <div class="lm-spouse-dash__avatar">\ud83d\udc64</div>
+        <div class="lm-spouse-dash__avatar">${me.gender === 'husband' ? '\ud83d\udc68' : '\ud83d\udc69'}</div>
         <strong>${me.name}</strong>
         <p>Level ${me.level}</p>
         <p>${me.stars} \u2b50</p>
       </div>
       <div class="lm-spouse-dash__heart">\u2764\ufe0f</div>
       <div class="lm-spouse-dash__player">
-        <div class="lm-spouse-dash__avatar">\ud83d\udc64</div>
+        <div class="lm-spouse-dash__avatar">${spouse.gender === 'husband' ? '\ud83d\udc68' : '\ud83d\udc69'}</div>
         <strong>${spouse.name}</strong>
         <p>Level ${spouse.level}</p>
         <p>${spouse.stars} \u2b50</p>
@@ -900,10 +959,15 @@ export class UIManager {
     });
     this._append(activity, actTitle, actList);
 
-    // Action buttons
+    // Action buttons (only show when connected)
     const actions = this._el('div', 'lm-spouse-dash__actions');
-    const giftBtn = this._el('button', 'lm-btn lm-btn--love lm-btn--large', { html: '\ud83c\udf81 Send Gift' });
-    giftBtn.onclick = () => this._emit('spouseDash:sendGift');
+    if (syncStatus.configured) {
+      const noteBtn = this._el('button', 'lm-btn lm-btn--love lm-btn--large', { html: '\ud83d\udc8c Send Love Note' });
+      noteBtn.onclick = () => this._emit('spouseDash:sendNote');
+      const giftBtn = this._el('button', 'lm-btn lm-btn--love lm-btn--large', { html: '\ud83c\udf81 Send Gift' });
+      giftBtn.onclick = () => this._emit('spouseDash:sendGift');
+      this._append(actions, noteBtn, giftBtn);
+    }
 
     // Pending help requests
     const helpSection = this._el('div', 'lm-spouse-dash__help');
@@ -924,8 +988,7 @@ export class UIManager {
     }
     this._append(helpSection, helpTitle, helpList);
 
-    this._append(actions, giftBtn);
-    this._append(screen, header, compare, activity, actions, helpSection);
+    this._append(screen, header, connSection, compare, activity, actions, helpSection);
     return screen;
   }
 }
@@ -2230,6 +2293,74 @@ const BASE_STYLES = `
   color: #aaa;
   font-size: 13px;
   padding: 10px;
+}
+
+/* ── Connection Setup ── */
+.lm-spouse-dash__connect {
+  margin: 0 16px 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #fce4ec, #fff);
+  border-radius: 16px;
+  border: 1px solid #f8bbd0;
+}
+.lm-spouse-dash__conn-status {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; padding: 8px 0;
+}
+.lm-spouse-dash__conn-status--ok {
+  color: #2e7d32;
+}
+.lm-spouse-dash__conn-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #4caf50; display: inline-block;
+  animation: connPulse 2s ease-in-out infinite;
+}
+@keyframes connPulse {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+}
+.lm-spouse-dash__conn-code {
+  font-size: 12px; color: #777; margin: 4px 0 8px;
+}
+.lm-spouse-dash__conn-code code {
+  background: #f5f5f5; padding: 2px 6px; border-radius: 4px;
+  font-family: monospace; font-size: 11px;
+}
+.lm-spouse-dash__conn-info {
+  font-size: 13px; color: #666; margin: 0 0 12px; line-height: 1.4;
+}
+.lm-spouse-dash__conn-form {
+  margin-bottom: 12px;
+}
+.lm-spouse-dash__label {
+  display: block; font-size: 13px; font-weight: 600;
+  color: #555; margin-bottom: 6px;
+}
+.lm-input {
+  width: 100%; padding: 10px 12px;
+  border: 1.5px solid #ddd; border-radius: 10px;
+  font-size: 14px; background: #fff;
+  outline: none; transition: border-color 0.2s;
+}
+.lm-input:focus { border-color: #e91e63; }
+.lm-spouse-dash__token-help {
+  font-size: 11px; color: #999; margin: 6px 0 0;
+}
+.lm-spouse-dash__token-help a {
+  color: #e91e63; text-decoration: underline;
+}
+.lm-spouse-dash__conn-btns {
+  display: flex; gap: 8px; margin-bottom: 14px;
+}
+.lm-spouse-dash__join-section {
+  margin-top: 8px; padding-top: 12px;
+  border-top: 1px solid #f0d0dc;
+}
+.lm-spouse-dash__join-section .lm-input {
+  margin-bottom: 8px;
+}
+.lm-btn--outline {
+  background: transparent; border: 1.5px solid #e91e63;
+  color: #e91e63;
 }
 `;
 

@@ -12,6 +12,7 @@ import { BibleReader } from './bible.js';
 import { QuizManager } from './quiz.js';
 import { UIManager } from './ui.js';
 import { AudioManager } from './audio.js';
+import { GistSync } from './gist-sync.js';
 
 // ── Storage Key ─────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ class App {
     this.bibleReader = new BibleReader();
     this.quizManager = new QuizManager();
     this.spouseConnection = null;
+    this.gistSync = new GistSync();
     this.ui = null;
     this.audio = new AudioManager();
 
@@ -132,8 +134,13 @@ class App {
     // Bind global events
     this._bindGlobalEvents();
 
-    // Start spouse polling
+    // Start spouse polling (local demo)
     this._startSpousePolling();
+
+    // Start Gist sync polling if already configured
+    if (this.gistSync.isConfigured()) {
+      this._startGistPolling();
+    }
 
     // Dismiss loading screen
     const loadingScreen = document.getElementById('loading-screen');
@@ -301,6 +308,18 @@ class App {
         break;
 
       // -- Spouse Dashboard --
+      case 'spouseDash:createChannel':
+        this._onCreateChannel(event.token);
+        break;
+      case 'spouseDash:joinChannel':
+        this._onJoinChannel(event.token, event.channelCode);
+        break;
+      case 'spouseDash:disconnect':
+        this._onDisconnectSync();
+        break;
+      case 'spouseDash:sendNote':
+        this._onSendLoveNote();
+        break;
       case 'spouseDash:sendGift':
         this._onSendGift();
         break;
@@ -473,24 +492,43 @@ class App {
 
   showSpouseDashboard() {
     this.audio.playMusicForScreen('us');
-    if (!this.spouseConnection) {
-      this.ui.showToast('Spouse connection not set up.', 'info');
-      return;
+
+    const syncStatus = this.gistSync.getStatus();
+    const myName = this.state.profile.name || 'You';
+    const myGender = this.state.profile.gender || 'wife';
+    const myLevel = this.state.progress.currentLevel || 1;
+    const myStars = Object.values(this.state.progress.levelStars || {}).reduce((a, b) => a + b, 0);
+
+    // Default spouse data
+    let spouseName = 'Spouse';
+    let spouseLevel = 1;
+    let spouseStars = 0;
+    let spouseGender = myGender === 'wife' ? 'husband' : 'wife';
+    let helpRequests = [];
+    let activity = [{ text: 'No recent activity yet.', time: '' }];
+
+    // If we have cached spouse data from polling, use it
+    if (this._cachedSpouseData) {
+      const sd = this._cachedSpouseData;
+      spouseName = sd.name || sd.profile?.name || 'Spouse';
+      spouseGender = sd.role || spouseGender;
+      spouseLevel = sd.gameProgress?.level || 1;
+      spouseStars = sd.gameProgress?.score || 0;
+      helpRequests = (sd.helpRequests || []).filter(r => r.status === 'pending');
+      activity = (sd.loveNotes || []).slice(-5).map(n => ({
+        text: `${n.from === myGender ? 'You' : spouseName}: ${n.message}`,
+        time: new Date(n.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }));
+      if (activity.length === 0) activity = [{ text: 'No recent activity yet.', time: '' }];
     }
 
-    const spouseProfile = this.spouseConnection.getSpouseProfile();
-    const dreamQ = this.spouseConnection.getDreamQuestion();
-    let comparison = null;
-    try { comparison = this.spouseConnection.getComparisonStats(); } catch { /* not connected */ }
-
     this.ui.showScreen('spouseDashboard', {
-      myProfile: this.spouseConnection.getProfile(),
-      spouseProfile,
-      dreamQuestion: dreamQ,
-      comparison,
-      gifts: this.spouseConnection.getGifts(),
-      helpRequests: this.spouseConnection.getHelpRequests(),
-      connected: this.state.spouse.connected,
+      syncStatus,
+      me: { name: myName, gender: myGender, level: myLevel, stars: myStars },
+      spouse: { name: spouseName, gender: spouseGender, level: spouseLevel, stars: spouseStars },
+      helpRequests,
+      activity,
+      connected: syncStatus.configured,
     });
   }
 
@@ -1182,28 +1220,115 @@ class App {
   // Spouse Dashboard Handlers
   // ================================================================
 
-  _onSendGift() {
-    if (!this.spouseConnection || !this.state.spouse.connected) {
-      this.ui.showToast('Not connected to spouse.', 'info');
-      return;
-    }
+  // ── Gist Sync Handlers ──
+
+  async _onCreateChannel(token) {
     try {
-      this.spouseConnection.sendGift('loveLetter');
-      this.ui.showToast('Gift sent!', 'success');
-      this.audio.playSound('gift');
+      this.ui.showToast('Creating channel...', 'info');
+      const role = this.state.profile.gender || 'wife';
+      const name = this.state.profile.name || '';
+      const channelCode = await this.gistSync.createChannel(token, role, name);
+
+      // Show the code to the user so they can share it
+      const codeDisplay = prompt(
+        'Share this Channel Code with your spouse!\n\nThey will enter it on their phone to connect.\n\nChannel Code:',
+        channelCode
+      );
+
+      this.ui.showToast('Channel created! Share the code with your spouse.', 'success');
+      this._startGistPolling();
+      this.showSpouseDashboard(); // Refresh the UI
     } catch (err) {
-      this.ui.showToast(err.message, 'error');
+      this.ui.showToast('Failed: ' + err.message, 'error');
     }
   }
 
-  _onRespondToHelp(requestId) {
-    if (!this.spouseConnection) return;
+  async _onJoinChannel(token, channelCode) {
     try {
-      this.spouseConnection.sendHelp('extraMoves');
-      this.ui.showToast('Help sent!', 'success');
+      this.ui.showToast('Joining channel...', 'info');
+      const role = this.state.profile.gender || 'wife';
+      const name = this.state.profile.name || '';
+      await this.gistSync.joinChannel(token, channelCode, role, name);
+
+      this.ui.showToast('Connected to your spouse!', 'success');
+      this._startGistPolling();
+      this.showSpouseDashboard(); // Refresh the UI
     } catch (err) {
-      this.ui.showToast(err.message, 'error');
+      this.ui.showToast('Failed: ' + err.message, 'error');
     }
+  }
+
+  _onDisconnectSync() {
+    this.gistSync.disconnect();
+    this._cachedSpouseData = null;
+    this.ui.showToast('Disconnected.', 'info');
+    this.showSpouseDashboard();
+  }
+
+  async _onSendLoveNote() {
+    if (!this.gistSync.isConfigured()) {
+      this.ui.showToast('Connect to your spouse first!', 'info');
+      return;
+    }
+    const message = prompt('Write a love note to your spouse:');
+    if (!message) return;
+    try {
+      await this.gistSync.sendLoveNote(message);
+      this.ui.showToast('Love note sent!', 'success');
+    } catch (err) {
+      this.ui.showToast('Failed to send: ' + err.message, 'error');
+    }
+  }
+
+  _onSendGift() {
+    if (!this.gistSync.isConfigured()) {
+      this.ui.showToast('Connect to your spouse first!', 'info');
+      return;
+    }
+    (async () => {
+      try {
+        await this.gistSync.sendGift('loveLetter', 'A gift from your spouse!');
+        this.ui.showToast('Gift sent!', 'success');
+        this.audio.playSound('gift');
+      } catch (err) {
+        this.ui.showToast('Failed: ' + err.message, 'error');
+      }
+    })();
+  }
+
+  _onRespondToHelp(requestId) {
+    if (!this.gistSync.isConfigured()) return;
+    (async () => {
+      try {
+        await this.gistSync.sendGift('extraMoves', 'Your spouse sent you extra moves!');
+        this.ui.showToast('Help sent!', 'success');
+      } catch (err) {
+        this.ui.showToast(err.message, 'error');
+      }
+    })();
+  }
+
+  _startGistPolling() {
+    if (!this.gistSync.isConfigured()) return;
+    this.gistSync.startPolling(
+      (spouseData) => {
+        this._cachedSpouseData = spouseData;
+        // Check for new love notes
+        const unread = (spouseData.loveNotes || []).filter(n => !n.read);
+        if (unread.length > 0) {
+          const latest = unread[unread.length - 1];
+          this.ui.showToast(`Love note: "${latest.message}"`, 'love');
+        }
+        // Check for gifts
+        const unclaimed = (spouseData.gifts || []).filter(g => !g.claimed);
+        if (unclaimed.length > 0) {
+          this.ui.showToast(`You received a gift from your spouse!`, 'success');
+        }
+      },
+      (status) => {
+        // Optional: show connection status indicator
+      }
+    );
   }
 
   // ================================================================
