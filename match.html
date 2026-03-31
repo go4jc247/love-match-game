@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Love Match</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #ffe0ec 0%, #ffc2d4 50%, #ffb3c6 100%);
+  display: flex; justify-content: center; align-items: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+}
+canvas {
+  display: block;
+  max-width: 480px;
+  width: 100%;
+  touch-action: none;
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+'use strict';
+
+// ── Constants ──
+const COLS = 8, ROWS = 8;
+const TILE_TYPES = [
+  { emoji: '\u{1F431}', bg1: '#ffb6c1', bg2: '#ff9aaf' },  // Kitten - light pink
+  { emoji: '\u2764\uFE0F',  bg1: '#ff4d6d', bg2: '#e63950' },  // Heart - red
+  { emoji: '\u{1F339}', bg1: '#ff6b8a', bg2: '#e0446b' },  // Rose - deep pink
+  { emoji: '\u{1F48D}', bg1: '#ffd700', bg2: '#f0c000' },  // Ring - gold
+  { emoji: '\u{1F54A}\uFE0F',  bg1: '#87ceeb', bg2: '#6db8d9' },  // Dove - light blue
+  { emoji: '\u{1F382}', bg1: '#c8a2e8', bg2: '#b68ad8' },  // Cake - lavender
+  { emoji: '\u{1F490}', bg1: '#ff7f50', bg2: '#e86b40' },  // Bouquet - coral
+  { emoji: '\u{1F381}', bg1: '#e040a0', bg2: '#c83090' },  // Gift - magenta
+];
+const NUM_TYPES = TILE_TYPES.length;
+
+const SCORE_3 = 50, SCORE_4 = 100, SCORE_5 = 200;
+const MAX_MOVES = 30;
+const STAR_THRESHOLDS = [500, 1500, 3000]; // 1, 2, 3 stars
+
+// Animation durations (ms)
+const SWAP_DUR = 200;
+const BOUNCE_DUR = 300;
+const MATCH_DUR = 250;
+const FALL_DUR = 300;
+const DROP_DUR = 250;
+
+// ── Canvas Setup ──
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W, H, tileSize, boardX, boardY, hudH;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  const maxW = Math.min(480, window.innerWidth);
+  const maxH = window.innerHeight;
+
+  // Calculate tile size to fit board
+  const availW = maxW - 20;  // 10px margin each side
+  tileSize = Math.floor(availW / COLS);
+
+  hudH = tileSize * 1.6;  // HUD height
+  const boardH = tileSize * ROWS;
+
+  W = tileSize * COLS + 20;
+  H = hudH + boardH + 30; // 30 for bottom padding
+
+  if (H > maxH) {
+    const scale = maxH / H;
+    tileSize = Math.floor(tileSize * scale);
+    hudH = tileSize * 1.6;
+    W = tileSize * COLS + 20;
+    H = hudH + tileSize * ROWS + 30;
+  }
+
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  boardX = (W - tileSize * COLS) / 2;
+  boardY = hudH;
+}
+
+// ── Game State ──
+let grid = [];       // grid[row][col] = type index or -1
+let score = 0;
+let moves = MAX_MOVES;
+let level = 1;
+let selected = null; // {row, col}
+let gameOver = false;
+let paused = false;
+
+// Animation state
+let animations = [];  // active animations
+let locked = false;   // prevent input during animations
+let cascadeLevel = 0;
+let scorePopups = [];
+let selectPulse = 0;
+
+// Input state
+let pointerDown = null; // {x, y, row, col}
+
+// ── Grid Logic ──
+function randomType() {
+  return Math.floor(Math.random() * NUM_TYPES);
+}
+
+function initGrid() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      let type;
+      do {
+        type = randomType();
+      } while (wouldMatch(r, c, type));
+      grid[r][c] = type;
+    }
+  }
+}
+
+function wouldMatch(row, col, type) {
+  // Check left
+  if (col >= 2 && grid[row][col-1] === type && grid[row][col-2] === type) return true;
+  // Check up
+  if (row >= 2 && grid[row-1] !== undefined && grid[row-1][col] === type &&
+      grid[row-2] !== undefined && grid[row-2][col] === type) return true;
+  return false;
+}
+
+function findMatches() {
+  const matched = new Set();
+
+  // Horizontal
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c <= COLS - 3; c++) {
+      const t = grid[r][c];
+      if (t < 0) continue;
+      let len = 1;
+      while (c + len < COLS && grid[r][c + len] === t) len++;
+      if (len >= 3) {
+        for (let i = 0; i < len; i++) matched.add(r * COLS + c + i);
+      }
+      if (len > 1) c += len - 2; // skip ahead (loop will +1)
+    }
+  }
+
+  // Vertical
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r <= ROWS - 3; r++) {
+      const t = grid[r][c];
+      if (t < 0) continue;
+      let len = 1;
+      while (r + len < ROWS && grid[r + len][c] === t) len++;
+      if (len >= 3) {
+        for (let i = 0; i < len; i++) matched.add((r + i) * COLS + c);
+      }
+      if (len > 1) r += len - 2;
+    }
+  }
+
+  return matched;
+}
+
+function scoreForMatch(length) {
+  if (length >= 5) return SCORE_5;
+  if (length === 4) return SCORE_4;
+  return SCORE_3;
+}
+
+function getMatchGroups() {
+  // Returns arrays of matched positions grouped by contiguous runs
+  const groups = [];
+
+  // Horizontal runs
+  for (let r = 0; r < ROWS; r++) {
+    let c = 0;
+    while (c < COLS) {
+      const t = grid[r][c];
+      if (t < 0) { c++; continue; }
+      let len = 1;
+      while (c + len < COLS && grid[r][c + len] === t) len++;
+      if (len >= 3) {
+        const g = [];
+        for (let i = 0; i < len; i++) g.push({ row: r, col: c + i });
+        groups.push(g);
+      }
+      c += len;
+    }
+  }
+
+  // Vertical runs
+  for (let c = 0; c < COLS; c++) {
+    let r = 0;
+    while (r < ROWS) {
+      const t = grid[r][c];
+      if (t < 0) { r++; continue; }
+      let len = 1;
+      while (r + len < ROWS && grid[r + len][c] === t) len++;
+      if (len >= 3) {
+        const g = [];
+        for (let i = 0; i < len; i++) g.push({ row: r + i, col: c });
+        groups.push(g);
+      }
+      r += len;
+    }
+  }
+
+  return groups;
+}
+
+// ── Animation System ──
+class Animation {
+  constructor(duration, updateFn, doneFn) {
+    this.duration = duration;
+    this.elapsed = 0;
+    this.updateFn = updateFn;
+    this.doneFn = doneFn;
+    this.done = false;
+  }
+  tick(dt) {
+    this.elapsed += dt;
+    const t = Math.min(this.elapsed / this.duration, 1);
+    this.updateFn(t);
+    if (t >= 1) {
+      this.done = true;
+      if (this.doneFn) this.doneFn();
+    }
+  }
+}
+
+// Easing functions
+function easeOut(t) { return 1 - (1 - t) * (1 - t); }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - (-2*t+2)*(-2*t+2)/2; }
+function easeOutBounce(t) {
+  if (t < 1/2.75) return 7.5625*t*t;
+  if (t < 2/2.75) { t -= 1.5/2.75; return 7.5625*t*t + 0.75; }
+  if (t < 2.5/2.75) { t -= 2.25/2.75; return 7.5625*t*t + 0.9375; }
+  t -= 2.625/2.75; return 7.5625*t*t + 0.984375;
+}
+
+// Tile display overrides (for animations)
+let tileOverrides = {}; // key "r,c" -> {x, y, scale, alpha}
+let removingTiles = new Set(); // tiles being removed (don't draw normally)
+
+function tileKey(r, c) { return r + ',' + c; }
+
+function setOverride(r, c, props) {
+  const k = tileKey(r, c);
+  if (!tileOverrides[k]) tileOverrides[k] = {};
+  Object.assign(tileOverrides[k], props);
+}
+
+function clearOverride(r, c) {
+  delete tileOverrides[tileKey(r, c)];
+}
+
+function getOverride(r, c) {
+  return tileOverrides[tileKey(r, c)] || null;
+}
+
+// ── Swap & Match Pipeline ──
+function isAdjacent(r1, c1, r2, c2) {
+  return (Math.abs(r1 - r2) + Math.abs(c1 - c2)) === 1;
+}
+
+function doSwap(r1, c1, r2, c2) {
+  locked = true;
+  selected = null;
+
+  // Animate swap
+  const startX1 = boardX + c1 * tileSize;
+  const startY1 = boardY + r1 * tileSize;
+  const startX2 = boardX + c2 * tileSize;
+  const startY2 = boardY + r2 * tileSize;
+
+  animations.push(new Animation(SWAP_DUR, (t) => {
+    const et = easeInOut(t);
+    setOverride(r1, c1, { x: startX1 + (startX2 - startX1) * et, y: startY1 + (startY2 - startY1) * et });
+    setOverride(r2, c2, { x: startX2 + (startX1 - startX2) * et, y: startY2 + (startY1 - startY2) * et });
+  }, () => {
+    clearOverride(r1, c1);
+    clearOverride(r2, c2);
+
+    // Actually swap in grid
+    const tmp = grid[r1][c1];
+    grid[r1][c1] = grid[r2][c2];
+    grid[r2][c2] = tmp;
+
+    // Check for matches
+    const matches = findMatches();
+    if (matches.size === 0) {
+      // Invalid swap - swap back
+      animateSwapBack(r1, c1, r2, c2);
+    } else {
+      moves--;
+      cascadeLevel = 0;
+      processMatches();
+    }
+  }));
+}
+
+function animateSwapBack(r1, c1, r2, c2) {
+  // Swap grid back
+  const tmp = grid[r1][c1];
+  grid[r1][c1] = grid[r2][c2];
+  grid[r2][c2] = tmp;
+
+  const startX1 = boardX + c1 * tileSize;
+  const startY1 = boardY + r1 * tileSize;
+  const startX2 = boardX + c2 * tileSize;
+  const startY2 = boardY + r2 * tileSize;
+
+  animations.push(new Animation(BOUNCE_DUR, (t) => {
+    const et = easeOutBounce(t);
+    // They're already at swapped positions visually, so animate back
+    setOverride(r1, c1, { x: startX2 + (startX1 - startX2) * et, y: startY2 + (startY1 - startY2) * et });
+    setOverride(r2, c2, { x: startX1 + (startX2 - startX1) * et, y: startY1 + (startY2 - startY1) * et });
+  }, () => {
+    clearOverride(r1, c1);
+    clearOverride(r2, c2);
+    locked = false;
+  }));
+}
+
+function processMatches() {
+  const groups = getMatchGroups();
+  if (groups.length === 0) {
+    // Check game over
+    if (moves <= 0) {
+      gameOver = true;
+    }
+    locked = false;
+    return;
+  }
+
+  cascadeLevel++;
+  const multiplier = cascadeLevel;
+
+  // Collect all matched positions
+  const allMatched = new Set();
+  let totalScore = 0;
+
+  for (const group of groups) {
+    const pts = scoreForMatch(group.length) * multiplier;
+    totalScore += pts;
+
+    // Score popup at center of group
+    const centerR = group[Math.floor(group.length / 2)].row;
+    const centerC = group[Math.floor(group.length / 2)].col;
+    scorePopups.push({
+      x: boardX + centerC * tileSize + tileSize / 2,
+      y: boardY + centerR * tileSize + tileSize / 2,
+      text: '+' + pts,
+      alpha: 1,
+      dy: 0,
+    });
+
+    for (const pos of group) {
+      allMatched.add(tileKey(pos.row, pos.col));
+    }
+  }
+
+  score += totalScore;
+
+  // Animate removal
+  const matchedArr = [];
+  allMatched.forEach(k => {
+    const [r, c] = k.split(',').map(Number);
+    matchedArr.push({ row: r, col: c });
+    removingTiles.add(k);
+  });
+
+  animations.push(new Animation(MATCH_DUR, (t) => {
+    const et = easeOut(t);
+    for (const { row, col } of matchedArr) {
+      setOverride(row, col, { scale: 1 - et * 0.8, alpha: 1 - et });
+    }
+  }, () => {
+    // Remove tiles from grid
+    for (const { row, col } of matchedArr) {
+      grid[row][col] = -1;
+      clearOverride(row, col);
+      removingTiles.delete(tileKey(row, col));
+    }
+    // Apply gravity
+    applyGravity();
+  }));
+}
+
+function applyGravity() {
+  // For each column, find gaps and drop tiles
+  const drops = []; // {row, col, fromRow, toRow}
+  const newTiles = []; // {row, col, type, dropDistance}
+
+  for (let c = 0; c < COLS; c++) {
+    let writeRow = ROWS - 1;
+    const colTiles = [];
+
+    // Collect existing tiles from bottom up
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (grid[r][c] >= 0) {
+        colTiles.push({ type: grid[r][c], fromRow: r });
+      }
+    }
+
+    // Place them from bottom up
+    for (let i = 0; i < colTiles.length; i++) {
+      const toRow = writeRow - i;
+      const { type, fromRow } = colTiles[i];
+      if (fromRow !== toRow) {
+        drops.push({ row: fromRow, col: c, fromRow, toRow, type });
+      }
+      grid[toRow][c] = type;
+    }
+
+    // Fill empty spots at top with new tiles
+    const emptyCount = ROWS - colTiles.length;
+    for (let i = 0; i < emptyCount; i++) {
+      const toRow = emptyCount - 1 - i;
+      const type = randomType();
+      grid[toRow][c] = type;
+      newTiles.push({ row: toRow, col: c, type, dropFrom: -(emptyCount - i) });
+    }
+
+    writeRow -= colTiles.length;
+  }
+
+  // Animate drops
+  if (drops.length === 0 && newTiles.length === 0) {
+    processMatches(); // Check cascades
+    return;
+  }
+
+  // Set up drop overrides
+  for (const d of drops) {
+    const fromY = boardY + d.fromRow * tileSize;
+    const toY = boardY + d.toRow * tileSize;
+    setOverride(d.toRow, d.col, { y: fromY, targetY: toY, dropping: true });
+  }
+  for (const n of newTiles) {
+    const fromY = boardY + n.dropFrom * tileSize;
+    const toY = boardY + n.row * tileSize;
+    setOverride(n.row, n.col, { y: fromY, targetY: toY, dropping: true });
+  }
+
+  const allDrops = [...drops.map(d => ({ row: d.toRow, col: d.col, fromY: boardY + d.fromRow * tileSize, toY: boardY + d.toRow * tileSize })),
+                     ...newTiles.map(n => ({ row: n.row, col: n.col, fromY: boardY + n.dropFrom * tileSize, toY: boardY + n.row * tileSize }))];
+
+  animations.push(new Animation(FALL_DUR, (t) => {
+    const et = easeOutBounce(t);
+    for (const d of allDrops) {
+      setOverride(d.row, d.col, { y: d.fromY + (d.toY - d.fromY) * et });
+    }
+  }, () => {
+    for (const d of allDrops) {
+      clearOverride(d.row, d.col);
+    }
+    // Check for cascading matches
+    processMatches();
+  }));
+}
+
+// ── Input Handling ──
+function canvasToGrid(cx, cy) {
+  const col = Math.floor((cx - boardX) / tileSize);
+  const row = Math.floor((cy - boardY) / tileSize);
+  if (row >= 0 && row < ROWS && col >= 0 && col < COLS) return { row, col };
+  return null;
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX || e.touches[0].clientX) - rect.left;
+  const y = (e.clientY || e.touches[0].clientY) - rect.top;
+  return { x, y };
+}
+
+function handlePauseClick(cx, cy) {
+  // Pause button area (top-right)
+  const btnSize = tileSize * 0.7;
+  const btnX = W - btnSize - 10;
+  const btnY = 10;
+  if (cx >= btnX && cx <= btnX + btnSize && cy >= btnY && cy <= btnY + btnSize) {
+    paused = !paused;
+    return true;
+  }
+  return false;
+}
+
+function handleRestartClick(cx, cy) {
+  if (!gameOver) return false;
+  // Check if click is on restart button
+  const btnW = 160, btnH = 50;
+  const btnX = W / 2 - btnW / 2;
+  const btnY = H / 2 + 30;
+  if (cx >= btnX && cx <= btnX + btnW && cy >= btnY && cy <= btnY + btnH) {
+    restartGame();
+    return true;
+  }
+  return false;
+}
+
+function restartGame() {
+  score = 0;
+  moves = MAX_MOVES;
+  gameOver = false;
+  paused = false;
+  selected = null;
+  locked = false;
+  animations = [];
+  tileOverrides = {};
+  removingTiles.clear();
+  scorePopups = [];
+  cascadeLevel = 0;
+  initGrid();
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (locked || paused || gameOver) {
+    const pos = getCanvasPos(e);
+    if (gameOver) handleRestartClick(pos.x, pos.y);
+    if (!gameOver) handlePauseClick(pos.x, pos.y);
+    return;
+  }
+  const pos = getCanvasPos(e);
+  if (handlePauseClick(pos.x, pos.y)) return;
+
+  const cell = canvasToGrid(pos.x, pos.y);
+  if (!cell) return;
+  pointerDown = { x: pos.x, y: pos.y, row: cell.row, col: cell.col };
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  e.preventDefault();
+  if (!pointerDown || locked) return;
+  const pos = getCanvasPos(e);
+  const dx = pos.x - pointerDown.x;
+  const dy = pos.y - pointerDown.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist > tileSize * 0.3) {
+    // Swipe detected
+    let dr = 0, dc = 0;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      dc = dx > 0 ? 1 : -1;
+    } else {
+      dr = dy > 0 ? 1 : -1;
+    }
+    const tr = pointerDown.row + dr;
+    const tc = pointerDown.col + dc;
+    if (tr >= 0 && tr < ROWS && tc >= 0 && tc < COLS) {
+      doSwap(pointerDown.row, pointerDown.col, tr, tc);
+    }
+    pointerDown = null;
+    selected = null;
+  }
+});
+
+canvas.addEventListener('pointerup', (e) => {
+  e.preventDefault();
+  if (!pointerDown || locked) { pointerDown = null; return; }
+
+  const pos = getCanvasPos(e);
+  const dx = pos.x - pointerDown.x;
+  const dy = pos.y - pointerDown.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < tileSize * 0.3) {
+    // Tap
+    const cell = canvasToGrid(pos.x, pos.y);
+    if (!cell) { pointerDown = null; return; }
+
+    if (selected) {
+      if (selected.row === cell.row && selected.col === cell.col) {
+        selected = null; // Deselect
+      } else if (isAdjacent(selected.row, selected.col, cell.row, cell.col)) {
+        doSwap(selected.row, selected.col, cell.row, cell.col);
+      } else {
+        selected = cell; // Select new tile
+      }
+    } else {
+      selected = cell;
+    }
+  }
+
+  pointerDown = null;
+});
+
+canvas.addEventListener('pointercancel', () => { pointerDown = null; });
+
+// ── Rendering ──
+function drawRoundedRect(x, y, w, h, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawTile(row, col, type, overrides) {
+  if (type < 0) return;
+  const info = TILE_TYPES[type];
+  const pad = 2;
+  const radius = tileSize * 0.15;
+
+  let x = boardX + col * tileSize + pad;
+  let y = boardY + row * tileSize + pad;
+  let w = tileSize - pad * 2;
+  let h = tileSize - pad * 2;
+  let alpha = 1;
+  let scale = 1;
+
+  if (overrides) {
+    if (overrides.x !== undefined) x = overrides.x + pad;
+    if (overrides.y !== undefined) y = overrides.y + pad;
+    if (overrides.alpha !== undefined) alpha = overrides.alpha;
+    if (overrides.scale !== undefined) scale = overrides.scale;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  if (scale !== 1) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+  }
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
+  grad.addColorStop(0, info.bg1);
+  grad.addColorStop(1, info.bg2);
+
+  drawRoundedRect(x, y, w, h, radius);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Subtle inner shadow at top
+  const innerGrad = ctx.createLinearGradient(x, y, x, y + h * 0.3);
+  innerGrad.addColorStop(0, 'rgba(255,255,255,0.35)');
+  innerGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  drawRoundedRect(x, y, w, h, radius);
+  ctx.fillStyle = innerGrad;
+  ctx.fill();
+
+  // Emoji
+  const emojiSize = w * 0.65;
+  ctx.font = emojiSize + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(info.emoji, x + w / 2, y + h / 2 + 1);
+
+  ctx.restore();
+}
+
+function drawSelectedHighlight(row, col, time) {
+  const pad = 1;
+  const x = boardX + col * tileSize + pad;
+  const y = boardY + row * tileSize + pad;
+  const w = tileSize - pad * 2;
+  const h = tileSize - pad * 2;
+  const radius = tileSize * 0.15;
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 5);
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 + pulse * 0.4})`;
+  ctx.lineWidth = 3 + pulse;
+  drawRoundedRect(x, y, w, h, radius);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBoard() {
+  // Board shadow/border
+  const bx = boardX - 4;
+  const by = boardY - 4;
+  const bw = tileSize * COLS + 8;
+  const bh = tileSize * ROWS + 8;
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.12)';
+  ctx.shadowBlur = 15;
+  ctx.shadowOffsetY = 4;
+  drawRoundedRect(bx, by, bw, bh, 12);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fill();
+  ctx.restore();
+
+  // Board bg
+  drawRoundedRect(boardX - 2, boardY - 2, tileSize * COLS + 4, tileSize * ROWS + 4, 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fill();
+}
+
+function drawHUD() {
+  const cx = W / 2;
+
+  // Level
+  ctx.save();
+  ctx.fillStyle = '#c2185b';
+  ctx.font = 'bold ' + (tileSize * 0.32) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Level ' + level, cx, 8);
+
+  // Score
+  ctx.font = 'bold ' + (tileSize * 0.45) + 'px sans-serif';
+  ctx.fillStyle = '#880e4f';
+  ctx.fillText(score.toLocaleString(), cx, 8 + tileSize * 0.35);
+
+  // Moves
+  ctx.font = (tileSize * 0.26) + 'px sans-serif';
+  ctx.fillStyle = '#ad1457';
+  ctx.textAlign = 'left';
+  ctx.fillText('Moves: ' + moves, 12, 15);
+
+  // Pause button
+  const btnSize = tileSize * 0.55;
+  const btnX = W - btnSize - 12;
+  const btnY = 12;
+
+  drawRoundedRect(btnX, btnY, btnSize, btnSize, 6);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fill();
+  ctx.strokeStyle = '#c2185b';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Pause icon (two bars)
+  ctx.fillStyle = '#c2185b';
+  if (paused) {
+    // Play triangle
+    ctx.beginPath();
+    ctx.moveTo(btnX + btnSize * 0.35, btnY + btnSize * 0.2);
+    ctx.lineTo(btnX + btnSize * 0.8, btnY + btnSize * 0.5);
+    ctx.lineTo(btnX + btnSize * 0.35, btnY + btnSize * 0.8);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    const barW = btnSize * 0.18;
+    ctx.fillRect(btnX + btnSize * 0.28, btnY + btnSize * 0.22, barW, btnSize * 0.56);
+    ctx.fillRect(btnX + btnSize * 0.54, btnY + btnSize * 0.22, barW, btnSize * 0.56);
+  }
+
+  // Star progress bar
+  const barY = hudH - tileSize * 0.3;
+  const barH = tileSize * 0.16;
+  const barW = W - 24;
+  const barX = 12;
+
+  // Bar background
+  drawRoundedRect(barX, barY, barW, barH, barH / 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fill();
+
+  // Bar fill
+  const maxScore = STAR_THRESHOLDS[2];
+  const fillW = Math.min(score / maxScore, 1) * barW;
+  if (fillW > 0) {
+    ctx.save();
+    ctx.beginPath();
+    drawRoundedRect(barX, barY, barW, barH, barH / 2);
+    ctx.clip();
+    const barGrad = ctx.createLinearGradient(barX, barY, barX + fillW, barY);
+    barGrad.addColorStop(0, '#ff6b8a');
+    barGrad.addColorStop(1, '#ff4081');
+    ctx.fillStyle = barGrad;
+    ctx.fillRect(barX, barY, fillW, barH);
+    ctx.restore();
+  }
+
+  // Star markers
+  const starChar = '\u2605';
+  ctx.font = (tileSize * 0.25) + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < 3; i++) {
+    const sx = barX + (STAR_THRESHOLDS[i] / maxScore) * barW;
+    ctx.fillStyle = score >= STAR_THRESHOLDS[i] ? '#ffd700' : 'rgba(255,255,255,0.6)';
+    ctx.fillText(starChar, sx, barY + barH / 2);
+  }
+
+  ctx.restore();
+}
+
+function drawScorePopups(dt) {
+  ctx.save();
+  for (let i = scorePopups.length - 1; i >= 0; i--) {
+    const p = scorePopups[i];
+    p.dy -= dt * 60;
+    p.alpha -= dt * 1.5;
+    if (p.alpha <= 0) {
+      scorePopups.splice(i, 1);
+      continue;
+    }
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#c2185b';
+    ctx.lineWidth = 2;
+    ctx.font = 'bold ' + (tileSize * 0.35) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeText(p.text, p.x, p.y + p.dy);
+    ctx.fillText(p.text, p.x, p.y + p.dy);
+  }
+  ctx.restore();
+}
+
+function drawGameOver() {
+  // Overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Panel
+  const panelW = W * 0.8;
+  const panelH = tileSize * 3;
+  const panelX = (W - panelW) / 2;
+  const panelY = H / 2 - panelH / 2 - 10;
+
+  drawRoundedRect(panelX, panelY, panelW, panelH, 16);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  // Stars
+  const stars = score >= STAR_THRESHOLDS[2] ? 3 : score >= STAR_THRESHOLDS[1] ? 2 : score >= STAR_THRESHOLDS[0] ? 1 : 0;
+  ctx.font = (tileSize * 0.6) + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i < stars ? '#ffd700' : '#ddd';
+    ctx.fillText('\u2605', panelX + panelW * (0.3 + i * 0.2), panelY + tileSize * 0.6);
+  }
+
+  // Score
+  ctx.fillStyle = '#880e4f';
+  ctx.font = 'bold ' + (tileSize * 0.4) + 'px sans-serif';
+  ctx.fillText('Score: ' + score.toLocaleString(), W / 2, panelY + tileSize * 1.3);
+
+  // Restart button
+  const btnW = 160, btnH = 46;
+  const btnX = W / 2 - btnW / 2;
+  const btnY = panelY + tileSize * 1.8;
+
+  drawRoundedRect(btnX, btnY, btnW, btnH, 23);
+  const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
+  btnGrad.addColorStop(0, '#ff6b8a');
+  btnGrad.addColorStop(1, '#e91e63');
+  ctx.fillStyle = btnGrad;
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold ' + (tileSize * 0.3) + 'px sans-serif';
+  ctx.fillText('Play Again', W / 2, btnY + btnH / 2);
+
+  ctx.restore();
+}
+
+function drawPauseOverlay() {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold ' + (tileSize * 0.6) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Paused', W / 2, H / 2);
+  ctx.restore();
+}
+
+// ── Main Loop ──
+let lastTime = 0;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  const dt = lastTime ? Math.min((now - lastTime) / 1000, 0.1) : 0.016;
+  lastTime = now;
+
+  if (paused) {
+    // Still draw but don't update
+    render(now / 1000, dt);
+    drawPauseOverlay();
+    return;
+  }
+
+  // Update animations
+  for (let i = animations.length - 1; i >= 0; i--) {
+    animations[i].tick(dt * 1000);
+    if (animations[i].done) {
+      animations.splice(i, 1);
+    }
+  }
+
+  render(now / 1000, dt);
+
+  if (gameOver) drawGameOver();
+}
+
+function render(time, dt) {
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+  bgGrad.addColorStop(0, '#ffe0ec');
+  bgGrad.addColorStop(0.5, '#ffc2d4');
+  bgGrad.addColorStop(1, '#ffb3c6');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // HUD
+  drawHUD();
+
+  // Board
+  drawBoard();
+
+  // Tiles
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (removingTiles.has(tileKey(r, c))) {
+        // Draw with override (fading/shrinking)
+        const ov = getOverride(r, c);
+        drawTile(r, c, grid[r][c], ov);
+        continue;
+      }
+      if (grid[r][c] < 0) continue;
+      const ov = getOverride(r, c);
+      drawTile(r, c, grid[r][c], ov);
+    }
+  }
+
+  // Selected highlight
+  if (selected && !locked) {
+    drawSelectedHighlight(selected.row, selected.col, time);
+  }
+
+  // Score popups
+  drawScorePopups(dt);
+}
+
+// ── Init ──
+function init() {
+  resize();
+  initGrid();
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', resize);
+init();
+</script>
+</body>
+</html>
