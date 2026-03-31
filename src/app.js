@@ -12,7 +12,7 @@ import { BibleReader } from './bible.js';
 import { QuizManager } from './quiz.js';
 import { UIManager } from './ui.js';
 import { AudioManager } from './audio.js';
-import { GistSync } from './gist-sync.js';
+import { GistSync, decryptToken } from './gist-sync.js';
 
 // ── Storage Key ─────────────────────────────────────────────────────
 
@@ -317,6 +317,9 @@ class App {
         break;
       case 'spouseDash:joinChannel':
         this._onJoinChannel(event.token, event.channelCode);
+        break;
+      case 'spouseDash:quickConnect':
+        this._onQuickConnect(event.password, event.channelCode);
         break;
       case 'spouseDash:refresh':
         this._onRefreshSync();
@@ -1229,6 +1232,27 @@ class App {
   // ================================================================
 
   // ── Gist Sync Handlers ──
+
+  async _onQuickConnect(password, channelCode) {
+    try {
+      this.ui.showToast('Decrypting...', 'info');
+      const token = await decryptToken(password);
+      if (!token || !token.startsWith('ghp_')) {
+        this.ui.showToast('Wrong password', 'error');
+        return;
+      }
+
+      if (channelCode) {
+        // Join existing channel
+        await this._onJoinChannel(token, channelCode);
+      } else {
+        // Create new channel
+        await this._onCreateChannel(token);
+      }
+    } catch (err) {
+      this.ui.showToast('Wrong password or decryption failed', 'error');
+    }
+  }
 
   async _onCreateChannel(token) {
     try {

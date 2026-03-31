@@ -21,6 +21,46 @@ const STORAGE_PREFIX = 'lovematch_gist_';
 const POLL_INTERVAL = 30000; // 30 seconds
 const ACTIVE_POLL_INTERVAL = 5000; // 5 seconds when recently active
 
+// Encrypted token blob (AES-256-GCM, password-protected)
+const _ENC_BLOB = 'Wnv/UxfUm/np4KX8ikuMVfinBKY6P1cPGUj2aQjjhnUMrV6nFrz9jCHkzwpRyUV8Ucukw7I9mt7ztpAZKAYg2SlEDkCRuL+cKTLSzPt6+yFIqFGL';
+
+/**
+ * Decrypt the stored token using a password.
+ * Uses Web Crypto API with PBKDF2 + AES-256-GCM.
+ */
+async function decryptToken(password) {
+  const raw = Uint8Array.from(atob(_ENC_BLOB), c => c.charCodeAt(0));
+  const salt = raw.slice(0, 16);
+  const iv = raw.slice(16, 28);
+  const tag = raw.slice(28, 44);
+  const ciphertext = raw.slice(44);
+
+  // Combine ciphertext + tag for WebCrypto (it expects them concatenated)
+  const combined = new Uint8Array(ciphertext.length + tag.length);
+  combined.set(ciphertext);
+  combined.set(tag, ciphertext.length);
+
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    combined
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
+export { decryptToken };
+
 export class GistSync {
 
   constructor() {

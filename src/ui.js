@@ -929,6 +929,26 @@ export class UIManager {
       this._append(joinSection, joinBtn);
       connSection.appendChild(btnRow);
       connSection.appendChild(joinSection);
+
+      // Quick Connect (password-protected token)
+      const quickSection = this._el('div', 'lm-spouse-dash__quick-section');
+      quickSection.innerHTML = `
+        <div style="border-top:1px solid #e0c0d0; margin-top:14px; padding-top:12px;">
+          <label class="lm-spouse-dash__label">\ud83d\udd10 Quick Connect (password)</label>
+          <input class="lm-input" type="password" placeholder="Enter password..." id="sync-quick-pw" autocomplete="off" />
+          <input class="lm-input" type="text" placeholder="Channel code (leave empty to create)" id="sync-quick-code" autocomplete="off" style="margin-top:6px" />
+        </div>
+      `;
+      const quickBtn = this._el('button', 'lm-btn lm-btn--primary', { html: '\ud83d\udd13 Quick Connect' });
+      quickBtn.style.marginTop = '8px';
+      quickBtn.onclick = () => {
+        const pw = document.getElementById('sync-quick-pw')?.value?.trim();
+        const code = document.getElementById('sync-quick-code')?.value?.trim();
+        if (!pw) { alert('Enter the password'); return; }
+        this._emit('spouseDash:quickConnect', { password: pw, channelCode: code || null });
+      };
+      quickSection.appendChild(quickBtn);
+      connSection.appendChild(quickSection);
     }
 
     // Side-by-side progress
