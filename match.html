@@ -182,6 +182,7 @@ function resize() {
 
 // ── Game State ──
 let grid = [];       // grid[row][col] = type index or -1
+let special = [];    // special[row][col] = tool number (1-3) or 0 (normal gem)
 let score = 0;
 let moves = MAX_MOVES;
 let level = 1;
@@ -207,6 +208,47 @@ const TOOLBAR_SLOTS = 5;
 let toolbarPage = 0; // which page of tools (0 = tools 1-5, 1 = tools 6-10)
 let activeTool = null; // tool number if a tool is selected, null otherwise
 
+// Screen shake
+let screenShake = { x: 0, y: 0, intensity: 0, decay: 0.88 };
+function triggerScreenShake(intensity) {
+  screenShake.intensity = Math.max(screenShake.intensity, intensity);
+}
+
+// Flash overlay
+let flashAlpha = 0;
+function triggerFlash(alpha) { flashAlpha = Math.max(flashAlpha, alpha || 0.3); }
+
+// Sparkle particles
+let sparkleParticles = [];
+function spawnSparkles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * 90;
+    sparkleParticles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 25,
+      size: 2 + Math.random() * 4,
+      alpha: 1, color,
+      gravity: 60 + Math.random() * 40,
+      life: 0.4 + Math.random() * 0.5,
+      age: 0,
+      type: Math.random() < 0.5 ? 'circle' : 'star',
+    });
+  }
+}
+
+// Flying tool (fly-to animation)
+let flyingTool = null; // { file, x, y, scale, alpha }
+
+// Obstacles
+let obstacles = [];
+const OBSTACLE_TYPES = {
+  lockedHeart: { maxHp: 2, name: 'Locked Heart', color1: '#ffd700', color2: '#b8860b' },
+  roseVine:    { maxHp: 3, name: 'Rose Vine', color1: '#228b22', color2: '#8b4513' },
+  yarnTangle:  { maxHp: 1, name: 'Yarn Tangle', color1: '#ff69b4', color2: '#ff1493' },
+};
+
 // Input state
 let pointerDown = null; // {x, y, row, col}
 
@@ -217,15 +259,41 @@ function randomType() {
 
 function initGrid() {
   grid = [];
+  special = [];
+  obstacles = [];
   for (let r = 0; r < ROWS; r++) {
     grid[r] = [];
+    special[r] = [];
+    obstacles[r] = [];
     for (let c = 0; c < COLS; c++) {
       let type;
       do {
         type = randomType();
       } while (wouldMatch(r, c, type));
       grid[r][c] = type;
+      special[r][c] = 0; // no special tool
+      obstacles[r][c] = null;
     }
+  }
+  // Place obstacles based on level
+  initObstacles();
+}
+
+function initObstacles() {
+  if (level < 2) return; // no obstacles on level 1
+  const obstacleCount = Math.min(2 + Math.floor(level / 2), 10);
+  const types = Object.keys(OBSTACLE_TYPES);
+  let placed = 0;
+  let attempts = 0;
+  while (placed < obstacleCount && attempts < 200) {
+    attempts++;
+    const r = 1 + Math.floor(Math.random() * (ROWS - 2)); // avoid top/bottom edges
+    const c = 1 + Math.floor(Math.random() * (COLS - 2));
+    if (obstacles[r][c]) continue;
+    const type = types[Math.floor(Math.random() * types.length)];
+    const def = OBSTACLE_TYPES[type];
+    obstacles[r][c] = { type, hp: def.maxHp, maxHp: def.maxHp };
+    placed++;
   }
 }
 
@@ -253,30 +321,34 @@ function wouldMatch(row, col, type) {
   return false;
 }
 
+function hasObstacle(r, c) {
+  return obstacles[r] && obstacles[r][c] !== null && obstacles[r][c] !== undefined;
+}
+
 function findMatches() {
   const matched = new Set();
 
-  // Horizontal
+  // Horizontal (skip obstacle cells)
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c <= COLS - 3; c++) {
       const t = grid[r][c];
-      if (t < 0) continue;
+      if (t < 0 || hasObstacle(r, c)) continue;
       let len = 1;
-      while (c + len < COLS && grid[r][c + len] === t) len++;
+      while (c + len < COLS && grid[r][c + len] === t && !hasObstacle(r, c + len)) len++;
       if (len >= 3) {
         for (let i = 0; i < len; i++) matched.add(r * COLS + c + i);
       }
-      if (len > 1) c += len - 2; // skip ahead (loop will +1)
+      if (len > 1) c += len - 2;
     }
   }
 
-  // Vertical
+  // Vertical (skip obstacle cells)
   for (let c = 0; c < COLS; c++) {
     for (let r = 0; r <= ROWS - 3; r++) {
       const t = grid[r][c];
-      if (t < 0) continue;
+      if (t < 0 || hasObstacle(r, c)) continue;
       let len = 1;
-      while (r + len < ROWS && grid[r + len][c] === t) len++;
+      while (r + len < ROWS && grid[r + len][c] === t && !hasObstacle(r + len, c)) len++;
       if (len >= 3) {
         for (let i = 0; i < len; i++) matched.add((r + i) * COLS + c);
       }
@@ -284,12 +356,14 @@ function findMatches() {
     }
   }
 
-  // 2x2 squares
+  // 2x2 squares (skip obstacle cells)
   for (let r = 0; r <= ROWS - 2; r++) {
     for (let c = 0; c <= COLS - 2; c++) {
       const t = grid[r][c];
-      if (t < 0) continue;
-      if (grid[r][c+1] === t && grid[r+1][c] === t && grid[r+1][c+1] === t) {
+      if (t < 0 || hasObstacle(r, c)) continue;
+      if (grid[r][c+1] === t && !hasObstacle(r, c+1) &&
+          grid[r+1][c] === t && !hasObstacle(r+1, c) &&
+          grid[r+1][c+1] === t && !hasObstacle(r+1, c+1)) {
         matched.add(r * COLS + c);
         matched.add(r * COLS + c + 1);
         matched.add((r+1) * COLS + c);
@@ -516,6 +590,11 @@ function isAdjacent(r1, c1, r2, c2) {
 }
 
 function doSwap(r1, c1, r2, c2) {
+  // Can't swap obstacle cells
+  if (hasObstacle(r1, c1) || hasObstacle(r2, c2)) {
+    selected = null;
+    return;
+  }
   locked = true;
   selected = null;
 
@@ -538,10 +617,48 @@ function doSwap(r1, c1, r2, c2) {
     grid[r1][c1] = grid[r2][c2];
     grid[r2][c2] = tmp;
 
+    // Also swap specials
+    const tmpSp = special[r1][c1];
+    special[r1][c1] = special[r2][c2];
+    special[r2][c2] = tmpSp;
+
+    // Check if either tile is a special — activate it!
+    const sp1 = special[r1][c1];
+    const sp2 = special[r2][c2];
+
+    if (sp1 > 0 || sp2 > 0) {
+      // Consume the move
+      if (stopwatchTurns > 0) { stopwatchTurns--; } else { moves--; }
+
+      // Check for special+special combo
+      if (sp1 > 0 && sp2 > 0) {
+        const combo = getCombo(sp1, sp2);
+        special[r1][c1] = 0;
+        special[r2][c2] = 0;
+        if (combo) {
+          combo();
+        } else {
+          // No combo — activate both separately
+          activateSpecialOnBoard(sp1, r1, c1);
+          activateSpecialOnBoard(sp2, r2, c2);
+        }
+      } else if (sp1 > 0) {
+        special[r1][c1] = 0;
+        activateSpecialOnBoard(sp1, r1, c1);
+      } else {
+        special[r2][c2] = 0;
+        activateSpecialOnBoard(sp2, r2, c2);
+      }
+      return;
+    }
+
     // Check for matches
     const matches = findMatches();
     if (matches.size === 0) {
-      // Invalid swap - swap back
+      // Invalid swap - swap back (also swap specials back)
+      const tmpSp2 = special[r1][c1];
+      special[r1][c1] = special[r2][c2];
+      special[r2][c2] = tmpSp2;
       animateSwapBack(r1, c1, r2, c2);
     } else {
       if (stopwatchTurns > 0) {
@@ -625,6 +742,23 @@ function processMatches() {
 
   score += totalScore;
 
+  // Impact effects — screen shake, flash, sparkles
+  const matchCount = allMatched.size;
+  triggerScreenShake(Math.min((2 + matchCount * 0.5) * cascadeLevel, 12));
+  triggerFlash(Math.min(0.1 + matchCount * 0.02 + cascadeLevel * 0.05, 0.4));
+
+  // Sparkles at each cleared position
+  allMatched.forEach(k => {
+    const [r, c] = k.split(',').map(Number);
+    const type = grid[r][c];
+    const color = type >= 0 && TILE_TYPES[type] ? (TILE_TYPES[type].bg1 || '#ff69b4') : '#ff69b4';
+    spawnSparkles(
+      boardX + c * tileSize + tileSize / 2,
+      boardY + r * tileSize + tileSize / 2,
+      color, 4 + cascadeLevel
+    );
+  });
+
   // Animate removal
   const matchedArr = [];
   allMatched.forEach(k => {
@@ -645,60 +779,117 @@ function processMatches() {
       clearOverride(row, col);
       removingTiles.delete(tileKey(row, col));
     }
-    // Spawn tools from special matches
+    // Spawn tools ON THE BOARD from special matches
     for (const spawn of toolSpawns) {
-      toolInventory[spawn.toolNum] = (toolInventory[spawn.toolNum] || 0) + 1;
+      // Place the special tool tile at the spawn position
+      // Keep the gem type so it has a "color" identity, but mark it special
+      if (grid[spawn.row][spawn.col] === -1) {
+        // Cell was cleared — place a new random gem with the special
+        grid[spawn.row][spawn.col] = randomType();
+      }
+      special[spawn.row][spawn.col] = spawn.toolNum;
       const toolDef = TOOLS.find(t => t.tool === spawn.toolNum);
       if (toolDef) {
         scorePopups.push({
           x: boardX + spawn.col * tileSize + tileSize / 2,
           y: boardY + spawn.row * tileSize + tileSize / 2,
-          text: '+' + toolDef.name + '!',
+          text: toolDef.name + '!',
           alpha: 1, dy: -15,
         });
       }
     }
+    // Damage adjacent obstacles
+    damageAdjacentObstacles(matchedArr);
     // Apply gravity
     applyGravity();
   }));
 }
 
+function damageObstacle(r, c) {
+  if (!obstacles[r] || !obstacles[r][c]) return;
+  const obs = obstacles[r][c];
+  obs.hp--;
+  if (obs.hp <= 0) {
+    obstacles[r][c] = null;
+    // Break effect
+    spawnSparkles(
+      boardX + c * tileSize + tileSize / 2,
+      boardY + r * tileSize + tileSize / 2,
+      OBSTACLE_TYPES[obs.type].color1, 6
+    );
+    triggerScreenShake(2);
+    scorePopups.push({
+      x: boardX + c * tileSize + tileSize / 2,
+      y: boardY + r * tileSize + tileSize / 2,
+      text: 'Free!', alpha: 1, dy: 0,
+    });
+  }
+}
+
+function damageAdjacentObstacles(clearedCells) {
+  const damaged = new Set();
+  for (const { row, col } of clearedCells) {
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    for (const [dr, dc] of dirs) {
+      const nr = row + dr, nc = col + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+        const k = tileKey(nr, nc);
+        if (!damaged.has(k) && obstacles[nr] && obstacles[nr][nc]) {
+          damaged.add(k);
+          damageObstacle(nr, nc);
+        }
+      }
+    }
+  }
+}
+
 function applyGravity() {
-  // For each column, find gaps and drop tiles
-  const drops = []; // {row, col, fromRow, toRow}
-  const newTiles = []; // {row, col, type, dropDistance}
+  // For each column, find gaps and drop tiles (obstacles are immovable)
+  const drops = [];
+  const newTiles = [];
 
   for (let c = 0; c < COLS; c++) {
+    // Work with segments separated by obstacles
     let writeRow = ROWS - 1;
-    const colTiles = [];
 
-    // Collect existing tiles from bottom up
-    for (let r = ROWS - 1; r >= 0; r--) {
-      if (grid[r][c] >= 0) {
-        colTiles.push({ type: grid[r][c], fromRow: r });
+    // Scan bottom up, obstacles block gravity
+    while (writeRow >= 0) {
+      // Skip obstacle rows
+      if (hasObstacle(writeRow, c)) { writeRow--; continue; }
+
+      // Find the gap: is this row empty?
+      if (grid[writeRow][c] >= 0) { writeRow--; continue; }
+
+      // Empty cell — find a tile above to drop into it
+      let sourceRow = writeRow - 1;
+      while (sourceRow >= 0 && grid[sourceRow][c] < 0 && !hasObstacle(sourceRow, c)) {
+        sourceRow--;
+      }
+
+      if (sourceRow < 0 || hasObstacle(sourceRow, c)) {
+        // No tile above (or blocked by obstacle) — need new tile
+        break;
+      }
+
+      // Drop tile from sourceRow to writeRow
+      grid[writeRow][c] = grid[sourceRow][c];
+      special[writeRow][c] = special[sourceRow][c];
+      grid[sourceRow][c] = -1;
+      special[sourceRow][c] = 0;
+      drops.push({ col: c, fromRow: sourceRow, toRow: writeRow, type: grid[writeRow][c] });
+      writeRow--;
+    }
+
+    // Fill remaining empty spots at top of each segment with new tiles
+    for (let r = writeRow; r >= 0; r--) {
+      if (hasObstacle(r, c)) continue;
+      if (grid[r][c] < 0) {
+        const type = randomType();
+        grid[r][c] = type;
+        special[r][c] = 0;
+        newTiles.push({ row: r, col: c, type, dropFrom: -(r + 1) });
       }
     }
-
-    // Place them from bottom up
-    for (let i = 0; i < colTiles.length; i++) {
-      const toRow = writeRow - i;
-      const { type, fromRow } = colTiles[i];
-      if (fromRow !== toRow) {
-        drops.push({ row: fromRow, col: c, fromRow, toRow, type });
-      }
-      grid[toRow][c] = type;
-    }
-
-    // Fill empty spots at top with new tiles
-    const emptyCount = ROWS - colTiles.length;
-    for (let i = 0; i < emptyCount; i++) {
-      const toRow = emptyCount - 1 - i;
-      const type = randomType();
-      grid[toRow][c] = type;
-      newTiles.push({ row: toRow, col: c, type, dropFrom: -(emptyCount - i) });
-    }
-
-    writeRow -= colTiles.length;
   }
 
   // Animate drops
@@ -791,6 +982,44 @@ function updateAndDrawHeartParticles(dt) {
   ctx.restore();
 }
 
+function updateAndDrawSparkles(dt) {
+  if (sparkleParticles.length === 0) return;
+  ctx.save();
+  for (let i = sparkleParticles.length - 1; i >= 0; i--) {
+    const p = sparkleParticles[i];
+    p.age += dt;
+    if (p.age >= p.life) { sparkleParticles.splice(i, 1); continue; }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += p.gravity * dt;
+    p.alpha = 1 - (p.age / p.life);
+
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    if (p.type === 'star') {
+      // Draw a small 4-point star
+      const s = p.size;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.age * 4);
+      ctx.beginPath();
+      for (let j = 0; j < 8; j++) {
+        const r = j % 2 === 0 ? s : s * 0.4;
+        const a = (j / 8) * Math.PI * 2;
+        j === 0 ? ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 // ── Love Letter: Clear Everything ──
 let loveLetterPhase = 0;  // 0=inactive, 1=transforming, 2=exploding
 let loveLetterTimer = 0;
@@ -814,6 +1043,81 @@ function activateLoveLetter() {
   }
   cells.sort((a, b) => a.dist - b.dist);
   loveLetterTransformOrder = cells;
+}
+
+// ── Activate Special Tile on Board ──
+function activateSpecialOnBoard(toolNum, row, col) {
+  locked = true;
+  cascadeLevel = 0;
+  triggerScreenShake(5);
+  triggerFlash(0.25);
+  switch (toolNum) {
+    case 1: useBomb(row, col); break;       // Bomb
+    case 2: useLightning(row, col); break;  // Lightning
+    case 3: useRainbowStar(row, col); break; // Rainbow Star
+    case 6: usePotion(row, col); break;      // Potion
+    default:
+      // Fallback: just process normal matches
+      processMatches();
+      break;
+  }
+}
+
+// ── Tool Fly-To Animation ──
+function animateToolFlyTo(toolNum, targetRow, targetCol, callback) {
+  const toolDef = TOOLS.find(t => t.tool === toolNum);
+  if (!toolDef) { callback(); return; }
+
+  // Source: find the toolbar slot position
+  const slots = getToolbarSlots();
+  const slotIdx = slots.findIndex(s => s.tool === toolNum);
+  let srcX, srcY;
+  if (slotIdx >= 0) {
+    const rect = getToolSlotRect(slotIdx);
+    srcX = rect.x + rect.w / 2;
+    srcY = rect.y + rect.h / 2;
+  } else {
+    srcX = W / 2;
+    srcY = toolbarY + toolbarH / 2;
+  }
+
+  // Destination: center of target cell
+  const dstX = boardX + targetCol * tileSize + tileSize / 2;
+  const dstY = boardY + targetRow * tileSize + tileSize / 2;
+
+  // Control point for arc (above midpoint)
+  const cpX = (srcX + dstX) / 2;
+  const cpY = Math.min(srcY, dstY) - tileSize * 2;
+
+  flyingTool = { file: toolDef.file, x: srcX, y: srcY, scale: 0.8, alpha: 1 };
+
+  animations.push(new Animation(350, (t) => {
+    const et = easeOut(t);
+    // Quadratic bezier: P = (1-t)²P0 + 2(1-t)tP1 + t²P2
+    const u = 1 - et;
+    flyingTool.x = u * u * srcX + 2 * u * et * cpX + et * et * dstX;
+    flyingTool.y = u * u * srcY + 2 * u * et * cpY + et * et * dstY;
+    flyingTool.scale = 0.8 + et * 0.4;
+    flyingTool.alpha = 1;
+  }, () => {
+    flyingTool = null;
+    // Landing impact
+    triggerScreenShake(3);
+    triggerFlash(0.15);
+    spawnSparkles(dstX, dstY, '#fff', 6);
+
+    // Briefly show tool on the tile (place it as a special), then activate
+    special[targetRow][targetCol] = toolNum;
+    animations.push(new Animation(250, (t2) => {
+      // Pulse the tile
+      const pulse = Math.sin(t2 * Math.PI * 2);
+      setOverride(targetRow, targetCol, { scale: 1 + pulse * 0.15 });
+    }, () => {
+      clearOverride(targetRow, targetCol);
+      special[targetRow][targetCol] = 0;
+      callback();
+    }));
+  }));
 }
 
 // ── Tool Usage ──
@@ -1519,6 +1823,14 @@ function restartGame() {
   removingTiles.clear();
   scorePopups = [];
   cascadeLevel = 0;
+  heartParticles = [];
+  sparkleParticles = [];
+  flyingTool = null;
+  screenShake = { x: 0, y: 0, intensity: 0, decay: 0.88 };
+  flashAlpha = 0;
+  loveLetterPhase = 0;
+  loveLetterTransformed = null;
+  loveLetterExploded = null;
   // Wait for any new images, then init
   function waitAndInit() {
     if (imagesLoaded >= totalImages) {
@@ -1658,9 +1970,14 @@ canvas.addEventListener('pointerup', (e) => {
     const cell = canvasToGrid(pos.x, pos.y);
     if (!cell) { pointerDown = null; return; }
 
-    // If a tool is active, use it on the tapped cell
+    // If a tool is active, fly it to target then activate
     if (activeTool !== null) {
-      useTool(activeTool, cell.row, cell.col);
+      const toolNum = activeTool;
+      activeTool = null;
+      locked = true;
+      animateToolFlyTo(toolNum, cell.row, cell.col, () => {
+        useTool(toolNum, cell.row, cell.col);
+      });
       pointerDown = null;
       return;
     }
@@ -1741,6 +2058,119 @@ function drawTile(row, col, type, overrides) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(info.name[0], x + w / 2, y + h / 2);
+  }
+
+  // Draw special tool overlay if this tile has one
+  const sp = special[row] && special[row][col];
+  if (sp > 0) {
+    const toolDef = TOOLS.find(t => t.tool === sp);
+    if (toolDef) {
+      const toolImg = imageCache[toolDef.file];
+      if (toolImg) {
+        // Glowing background circle
+        ctx.save();
+        ctx.shadowColor = sp === 1 ? '#ff6600' : sp === 2 ? '#ffff00' : '#ff00ff';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(x + w / 2, y + h / 2, w * 0.28, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fill();
+        ctx.restore();
+        // Tool icon overlay (smaller, bottom-right corner)
+        const toolSize = w * 0.45;
+        ctx.drawImage(toolImg, x + w - toolSize - 1, y + h - toolSize - 1, toolSize, toolSize);
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawObstacle(row, col, obs) {
+  const x = boardX + col * tileSize + 2;
+  const y = boardY + row * tileSize + 2;
+  const w = tileSize - 4;
+  const h = tileSize - 4;
+  const radius = tileSize * 0.15;
+  const damage = 1 - obs.hp / obs.maxHp; // 0 = full hp, 1 = almost dead
+
+  ctx.save();
+
+  if (obs.type === 'lockedHeart') {
+    // Golden lock overlay — gets cracked as HP drops
+    ctx.globalAlpha = 0.6 - damage * 0.2;
+    drawRoundedRect(x, y, w, h, radius);
+    ctx.fillStyle = `rgba(255, 215, 0, ${0.4 - damage * 0.2})`;
+    ctx.fill();
+    // Chain pattern
+    ctx.strokeStyle = `rgba(184, 134, 11, ${0.7 - damage * 0.3})`;
+    ctx.lineWidth = 2.5 - damage;
+    // Horizontal chain
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y + h / 2);
+    ctx.lineTo(x + w - 4, y + h / 2);
+    ctx.stroke();
+    // Vertical chain
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y + 4);
+    ctx.lineTo(x + w / 2, y + h - 4);
+    ctx.stroke();
+    // Lock icon
+    ctx.fillStyle = '#b8860b';
+    ctx.font = 'bold ' + (w * 0.35) + 'px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(damage > 0.4 ? '\uD83D\uDD13' : '\uD83D\uDD12', x + w / 2, y + h / 2);
+    // Cracks
+    if (damage > 0) {
+      ctx.strokeStyle = 'rgba(100,50,0,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.3, y + h * 0.2);
+      ctx.lineTo(x + w * 0.5, y + h * 0.5);
+      ctx.lineTo(x + w * 0.7, y + h * 0.3);
+      ctx.stroke();
+    }
+  } else if (obs.type === 'roseVine') {
+    // Green vines wrapping the tile — thin out with damage
+    const alpha = 0.6 - damage * 0.25;
+    ctx.globalAlpha = alpha;
+    const vineColor = damage > 0.5 ? '#8b4513' : '#228b22';
+    ctx.strokeStyle = vineColor;
+    ctx.lineWidth = 3 - damage * 2;
+    // Vine tendrils
+    const vines = Math.max(1, Math.floor((1 - damage) * 4));
+    for (let v = 0; v < vines; v++) {
+      ctx.beginPath();
+      const startX = x + (v % 2 === 0 ? 0 : w);
+      const startY = y + (v / vines) * h;
+      ctx.moveTo(startX, startY);
+      ctx.quadraticCurveTo(x + w / 2, y + h * (0.3 + v * 0.15), x + (v % 2 === 0 ? w : 0), y + h * 0.8);
+      ctx.stroke();
+    }
+    // Thorns
+    ctx.fillStyle = vineColor;
+    ctx.globalAlpha = alpha * 0.8;
+    for (let i = 0; i < 3 - Math.floor(damage * 2); i++) {
+      const tx = x + w * (0.2 + i * 0.3);
+      const ty = y + h * (0.3 + (i % 2) * 0.4);
+      ctx.beginPath();
+      ctx.arc(tx, ty, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (obs.type === 'yarnTangle') {
+    // Pink yarn strands — single hit
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = '#ff69b4';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y + 4);
+    ctx.bezierCurveTo(x + w * 0.7, y + h * 0.2, x + w * 0.3, y + h * 0.8, x + w - 4, y + h - 4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + w - 4, y + 4);
+    ctx.bezierCurveTo(x + w * 0.3, y + h * 0.3, x + w * 0.7, y + h * 0.7, x + 4, y + h - 4);
+    ctx.stroke();
   }
 
   ctx.restore();
@@ -2063,6 +2493,13 @@ function frame(now) {
           loveLetterPhase = 0;
           loveLetterTransformed = null;
           loveLetterExploded = null;
+          // Clear all obstacles (Love Letter destroys everything!)
+          for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+              obstacles[r][c] = null;
+              special[r][c] = 0;
+            }
+          }
           // Refill from top (gravity animation)
           for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
@@ -2213,6 +2650,15 @@ function drawToolbar() {
 }
 
 function render(time, dt) {
+  // Update screen shake
+  if (screenShake.intensity > 0.3) {
+    screenShake.x = (Math.random() - 0.5) * screenShake.intensity * 2;
+    screenShake.y = (Math.random() - 0.5) * screenShake.intensity * 2;
+    screenShake.intensity *= screenShake.decay;
+  } else {
+    screenShake.x = 0; screenShake.y = 0; screenShake.intensity = 0;
+  }
+
   // Clear
   ctx.clearRect(0, 0, W, H);
 
@@ -2223,6 +2669,10 @@ function render(time, dt) {
   bgGrad.addColorStop(1, '#ffb3c6');
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
+
+  // Apply screen shake to board area
+  ctx.save();
+  ctx.translate(screenShake.x, screenShake.y);
 
   // HUD
   drawHUD();
@@ -2260,13 +2710,48 @@ function render(time, dt) {
     drawSelectedHighlight(selected.row, selected.col, time);
   }
 
+  // Draw obstacles on top of tiles
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const obs = obstacles[r] && obstacles[r][c];
+      if (obs) drawObstacle(r, c, obs);
+    }
+  }
+
+  // Flash overlay on board
+  if (flashAlpha > 0.01) {
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+    ctx.fillRect(boardX - 4, boardY - 4, tileSize * COLS + 8, tileSize * ROWS + 8);
+    ctx.restore();
+    flashAlpha *= 0.82;
+  }
+
   // Score popups
   drawScorePopups(dt);
+
+  // Sparkle particles
+  updateAndDrawSparkles(dt);
 
   // Heart particles (Love Letter effect)
   updateAndDrawHeartParticles(dt);
 
-  // Toolbar
+  // Flying tool animation
+  if (flyingTool) {
+    const img = imageCache[flyingTool.file];
+    if (img) {
+      ctx.save();
+      ctx.globalAlpha = flyingTool.alpha;
+      const s = tileSize * flyingTool.scale;
+      ctx.drawImage(img, flyingTool.x - s / 2, flyingTool.y - s / 2, s, s);
+      ctx.restore();
+    }
+  }
+
+  // End screen shake transform
+  ctx.restore();
+
+  // Toolbar (drawn outside shake so it stays stable)
   drawToolbar();
 }
 
