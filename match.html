@@ -2326,10 +2326,19 @@ function handlePauseClick(cx, cy) {
 
 function handleRestartClick(cx, cy) {
   if (!gameOver) return false;
-  // Check if click is on restart button
-  const btnW = 160, btnH = 50;
+  // Match button position from drawGameOver()
+  const isFinale = levelComplete && level === 20;
+  const panelH = isFinale ? tileSize * 4.2 : tileSize * 3.5;
+  const panelY = H / 2 - panelH / 2 - 10;
+  // Reconstruct yOff to find button position
+  let yOff = panelY + tileSize * 0.15;
+  if (isFinale) { yOff += tileSize * 0.35 + tileSize * 0.4 + tileSize * 0.35; }
+  else { yOff += tileSize * 0.32 + tileSize * 0.4; }
+  yOff += tileSize * 0.55; // stars
+  yOff += tileSize * 0.6; // score
+  const btnW = 180, btnH = 46;
   const btnX = W / 2 - btnW / 2;
-  const btnY = H / 2 + 30;
+  const btnY = yOff;
   if (cx >= btnX && cx <= btnX + btnW && cy >= btnY && cy <= btnY + btnH) {
     restartGame();
     return true;
@@ -2975,9 +2984,12 @@ function drawGameOver() {
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
   ctx.fillRect(0, 0, W, H);
 
+  // Determine if this is a level 20 victory (special celebration)
+  const isFinale = levelComplete && level === 20;
+
   // Panel
   const panelW = W * 0.8;
-  const panelH = tileSize * 3;
+  const panelH = isFinale ? tileSize * 4.2 : tileSize * 3.5;
   const panelX = (W - panelW) / 2;
   const panelY = H / 2 - panelH / 2 - 10;
 
@@ -2985,27 +2997,56 @@ function drawGameOver() {
   ctx.fillStyle = '#fff';
   ctx.fill();
 
+  let yOff = panelY + tileSize * 0.15;
+
+  // Title text
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (isFinale) {
+    ctx.fillStyle = '#e91e63';
+    ctx.font = 'bold ' + (tileSize * 0.42) + 'px sans-serif';
+    yOff += tileSize * 0.35;
+    ctx.fillText('Congratulations!', W / 2, yOff);
+    ctx.fillStyle = '#880e4f';
+    ctx.font = (tileSize * 0.24) + 'px sans-serif';
+    yOff += tileSize * 0.4;
+    ctx.fillText('You completed all 20 levels!', W / 2, yOff);
+    yOff += tileSize * 0.35;
+  } else if (levelComplete) {
+    ctx.fillStyle = '#4caf50';
+    ctx.font = 'bold ' + (tileSize * 0.36) + 'px sans-serif';
+    yOff += tileSize * 0.32;
+    ctx.fillText('Level Complete!', W / 2, yOff);
+    yOff += tileSize * 0.4;
+  } else {
+    ctx.fillStyle = '#880e4f';
+    ctx.font = 'bold ' + (tileSize * 0.36) + 'px sans-serif';
+    yOff += tileSize * 0.32;
+    ctx.fillText('Time\'s Up!', W / 2, yOff);
+    yOff += tileSize * 0.4;
+  }
+
   // Stars based on level target
   const cfg = getLevelConfig(level);
   const t = cfg.target;
   const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
   ctx.font = (tileSize * 0.6) + 'px serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
   for (let i = 0; i < 3; i++) {
     ctx.fillStyle = i < stars ? '#ffd700' : '#ddd';
-    ctx.fillText('\u2605', panelX + panelW * (0.3 + i * 0.2), panelY + tileSize * 0.6);
+    ctx.fillText('\u2605', panelX + panelW * (0.3 + i * 0.2), yOff);
   }
+  yOff += tileSize * 0.55;
 
   // Score
   ctx.fillStyle = '#880e4f';
   ctx.font = 'bold ' + (tileSize * 0.4) + 'px sans-serif';
-  ctx.fillText('Score: ' + score.toLocaleString(), W / 2, panelY + tileSize * 1.3);
+  ctx.fillText('Score: ' + score.toLocaleString(), W / 2, yOff);
+  yOff += tileSize * 0.6;
 
   // Restart button
-  const btnW = 160, btnH = 46;
+  const btnW = 180, btnH = 46;
   const btnX = W / 2 - btnW / 2;
-  const btnY = panelY + tileSize * 1.8;
+  const btnY = yOff;
 
   drawRoundedRect(btnX, btnY, btnW, btnH, 23);
   const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
@@ -3016,7 +3057,8 @@ function drawGameOver() {
 
   ctx.fillStyle = '#fff';
   ctx.font = 'bold ' + (tileSize * 0.3) + 'px sans-serif';
-  ctx.fillText(levelComplete ? 'Next Level' : 'Try Again', W / 2, btnY + btnH / 2);
+  const btnLabel = isFinale ? 'Keep Playing!' : (levelComplete ? 'Next Level' : 'Try Again');
+  ctx.fillText(btnLabel, W / 2, btnY + btnH / 2);
 
   ctx.restore();
 }
