@@ -584,6 +584,50 @@ function hasObstacle(r, c) {
   return obstacles[r] && obstacles[r][c] !== null && obstacles[r][c] !== undefined;
 }
 
+// Shuffle all non-special, non-obstacle active tiles until a valid move exists
+function shuffleBoard() {
+  locked = true;
+  scorePopups.push({
+    x: W / 2, y: boardY + tileSize * ROWS / 2,
+    text: 'No moves! Shuffling...', alpha: 1, dy: 0,
+  });
+
+  // Collect all swappable cell positions and their types
+  const cells = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (!boardMask[r] || !boardMask[r][c]) continue;
+      if (grid[r][c] < 0) continue;
+      if (special[r] && special[r][c] > 0) continue;
+      if (hasObstacle(r, c)) continue;
+      cells.push({ r, c });
+    }
+  }
+
+  // Shuffle types among those cells (up to 50 attempts to find a valid board)
+  for (let attempt = 0; attempt < 50; attempt++) {
+    // Fisher-Yates shuffle of the types
+    const types = cells.map(cell => grid[cell.r][cell.c]);
+    for (let i = types.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [types[i], types[j]] = [types[j], types[i]];
+    }
+    // Apply shuffled types
+    for (let i = 0; i < cells.length; i++) {
+      grid[cells[i].r][cells[i].c] = types[i];
+    }
+    // Check if valid moves exist now
+    if (findHintMove()) break;
+  }
+
+  // Brief animation then unlock
+  animations.push(new Animation(400, () => {}, () => {
+    locked = false;
+    hintTimer = 0;
+    hintCells = null;
+  }));
+}
+
 // Find a valid swap that creates a match (for hint system)
 function findHintMove() {
   const dirs = [[0,1],[1,0]]; // right and down
@@ -982,6 +1026,11 @@ function processMatches() {
     // Check game over
     if (timeLeft <= 0) {
       gameOver = true;
+    }
+    // Check if any valid moves exist — if not, shuffle the board
+    if (!gameOver && !levelComplete && !findHintMove()) {
+      shuffleBoard();
+      return;
     }
     locked = false;
     return;
