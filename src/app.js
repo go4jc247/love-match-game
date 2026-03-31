@@ -527,8 +527,10 @@ class App {
 
       // Wire input callbacks from the renderer
       this.renderer.onClick(({ row, col }) => this._onTileClick(row, col));
-      this.renderer.onSwipe(({ fromRow, fromCol, toRow, toCol }) => {
-        this._onSwipe(fromRow, fromCol, toRow, toCol);
+      this.renderer.onSwipe(({ row, col, direction }) => {
+        const deltas = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
+        const [dr, dc] = deltas[direction] || [0, 0];
+        this._onSwipe(row, col, row + dr, col + dc);
       });
     }
 

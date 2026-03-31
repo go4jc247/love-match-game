@@ -31,15 +31,29 @@ canvas {
 // ── Constants ──
 const COLS = 8, ROWS = 8;
 const TILE_TYPES = [
-  { emoji: '\u{1F431}', bg1: '#ffb6c1', bg2: '#ff9aaf' },  // Kitten - light pink
-  { emoji: '\u2764\uFE0F',  bg1: '#ff4d6d', bg2: '#e63950' },  // Heart - red
-  { emoji: '\u{1F339}', bg1: '#ff6b8a', bg2: '#e0446b' },  // Rose - deep pink
-  { emoji: '\u{1F48D}', bg1: '#ffd700', bg2: '#f0c000' },  // Ring - gold
-  { emoji: '\u{1F54A}\uFE0F',  bg1: '#87ceeb', bg2: '#6db8d9' },  // Dove - light blue
-  { emoji: '\u{1F382}', bg1: '#c8a2e8', bg2: '#b68ad8' },  // Cake - lavender
-  { emoji: '\u{1F490}', bg1: '#ff7f50', bg2: '#e86b40' },  // Bouquet - coral
-  { emoji: '\u{1F381}', bg1: '#e040a0', bg2: '#c83090' },  // Gift - magenta
+  { emoji: '\u{1F431}', bg1: '#ffb6c1', bg2: '#ff9aaf', icon: 'icons/tile-paw.png' },       // Paw - light pink
+  { emoji: '\u2764\uFE0F',  bg1: '#ff4d6d', bg2: '#e63950', icon: 'icons/tile-heart.png' },  // Heart - red
+  { emoji: '\u{1F339}', bg1: '#ff6b8a', bg2: '#e0446b', icon: 'icons/tile-rose.png' },       // Rose - deep pink
+  { emoji: '\u{1F48D}', bg1: '#ffd700', bg2: '#f0c000', icon: null },                         // Ring - gold (emoji)
+  { emoji: '\u{1F54A}\uFE0F',  bg1: '#87ceeb', bg2: '#6db8d9', icon: 'icons/tile-envelope.png' }, // Envelope - blue
+  { emoji: '\u{1F382}', bg1: '#c8a2e8', bg2: '#b68ad8', icon: 'icons/tile-bouquet.png' },    // Bouquet - lavender
+  { emoji: '\u{1F490}', bg1: '#ff7f50', bg2: '#e86b40', icon: 'icons/tile-bow.png' },        // Bow - coral
+  { emoji: '\u{1F381}', bg1: '#e040a0', bg2: '#c83090', icon: 'icons/tile-gift.png' },       // Gift - magenta
 ];
+
+// Preload tile images
+const tileImages = {};
+let imagesLoaded = 0;
+const totalImages = TILE_TYPES.filter(t => t.icon).length;
+
+TILE_TYPES.forEach((t, i) => {
+  if (t.icon) {
+    const img = new Image();
+    img.onload = () => { tileImages[i] = img; imagesLoaded++; };
+    img.onerror = () => { imagesLoaded++; }; // fallback to emoji
+    img.src = t.icon;
+  }
+});
 const NUM_TYPES = TILE_TYPES.length;
 
 const SCORE_3 = 50, SCORE_4 = 100, SCORE_5 = 200;
@@ -664,12 +678,17 @@ function drawTile(row, col, type, overrides) {
   ctx.fillStyle = innerGrad;
   ctx.fill();
 
-  // Emoji
-  const emojiSize = w * 0.65;
-  ctx.font = emojiSize + 'px serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(info.emoji, x + w / 2, y + h / 2 + 1);
+  // Icon image or emoji fallback
+  if (tileImages[type]) {
+    const imgPad = w * 0.1;
+    ctx.drawImage(tileImages[type], x + imgPad, y + imgPad, w - imgPad * 2, h - imgPad * 2);
+  } else {
+    const emojiSize = w * 0.65;
+    ctx.font = emojiSize + 'px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(info.emoji, x + w / 2, y + h / 2 + 1);
+  }
 
   ctx.restore();
 }
