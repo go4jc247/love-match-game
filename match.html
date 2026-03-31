@@ -1402,6 +1402,17 @@ function checkLevelComplete() {
   if (score >= cfg.target) {
     levelComplete = true;
     sfxLevelComplete();
+    // Sync progress to spouse immediately
+    if (gistSync.isConfigured()) {
+      const stars = score >= cfg.target * 2 ? 3 : score >= cfg.target ? 2 : 1;
+      saveLevelStars(level, stars);
+      gistSync.syncGameProgress().catch(() => {});
+      // Send sweet milestone messages at certain levels
+      const milestones = { 5: "We made it through 5 levels together! 💕", 10: "10 levels! Playing with you makes everything sweeter 🥰", 15: "Level 15! You inspire me to keep going ❤️", 20: "20 levels conquered together! I love doing life with you 💑" };
+      if (milestones[level]) {
+        gistSync.sendLoveNote(milestones[level]).catch(() => {});
+      }
+    }
     // Collect all special tools on the board to activate one by one
     levelCompleteToolQueue = [];
     for (let r = 0; r < ROWS; r++) {
@@ -3952,10 +3963,10 @@ const gistSync = {
     await this.pushData(d);
   },
 
-  async sendGift(toolName) {
+  async sendGift(toolName, message) {
     const d = await this._readMyData();
     d.gifts = d.gifts || [];
-    d.gifts.push({ id: Date.now().toString(36), from: this.role, tool: toolName, sentAt: new Date().toISOString(), claimed: false });
+    d.gifts.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), from: this.role, tool: toolName, message: message || '', sentAt: new Date().toISOString(), claimed: false });
     await this.pushData(d);
   },
 
@@ -3970,7 +3981,15 @@ const gistSync = {
   async syncGameProgress() {
     if (!this.isConfigured()) return;
     const d = await this._readMyData();
-    d.gameProgress = { level, score, highLevel: parseInt(localStorage.getItem('lovematch_highLevel') || '1') };
+    const starsMap = JSON.parse(localStorage.getItem('lovematch_stars') || '{}');
+    const totalStars = Object.values(starsMap).reduce((a, b) => a + b, 0);
+    d.gameProgress = {
+      level,
+      score,
+      highLevel: parseInt(localStorage.getItem('lovematch_highLevel') || '1'),
+      totalStars,
+      levelStars: starsMap,
+    };
     await this.pushData(d);
   },
 
@@ -4109,9 +4128,10 @@ function drawSpousePanel() {
     // Spouse progress
     const spData = gistSync._lastSpouseData;
     if (spData && spData.gameProgress) {
+      const gp = spData.gameProgress;
       ctx.fillStyle = '#880e4f'; ctx.font = (tileSize * 0.24) + 'px sans-serif';
-      ctx.fillText(spName + ' is on Level ' + (spData.gameProgress.level || 1), W / 2, btnY3 + 70);
-      ctx.fillText('Score: ' + (spData.gameProgress.score || 0).toLocaleString(), W / 2, btnY3 + 95);
+      ctx.fillText(spName + ' is on Level ' + (gp.highLevel || gp.level || 1), W / 2, btnY3 + 70);
+      ctx.fillText((gp.totalStars || 0) + ' ⭐  •  Score: ' + (gp.score || 0).toLocaleString(), W / 2, btnY3 + 95);
     }
 
     // Disconnect button
@@ -4182,15 +4202,29 @@ function handleSpousePanelClick(cx, cy) {
     // Send Tool
     const btnY2 = btnY1 + 56;
     if (cy >= btnY2 && cy <= btnY2 + 44) {
-      const tools = getUnlockedTools();
-      if (tools.length === 0) { alert('No tools unlocked yet!'); return true; }
-      const toolNames = tools.map((t,i) => (i+1) + '. ' + t.name).join('\n');
-      const pick = prompt('Pick a tool to send:\n' + toolNames);
+      // Show tools that have inventory > 0
+      const tools = getUnlockedTools().filter(t => (toolInventory[t.tool] || 0) > 0);
+      if (tools.length === 0) { alert('No tools available to send! Complete levels to earn more.'); return true; }
+      const toolNames = tools.map((t,i) => (i+1) + '. ' + t.name + ' (x' + (toolInventory[t.tool] || 0) + ')').join('\n');
+      const pick = prompt('Pick a tool to send to ' + spName + ':\n' + toolNames);
       const idx = parseInt(pick) - 1;
       if (idx >= 0 && idx < tools.length) {
-        gistSync.sendGift(tools[idx].name).then(() => {
-          scorePopups.push({ x: W/2, y: H/3, text: tools[idx].name + ' sent!', alpha: 1, dy: 0 });
-        }).catch(e => alert('Error: ' + e.message));
+        const chosenTool = tools[idx];
+        toolInventory[chosenTool.tool]--; // Deduct from your inventory
+        const sweetMsgs = [
+          'Sent with love! 💕',
+          'Here, this will help! ❤️',
+          'From me to you, babe! 💝',
+          'You got this! Use it well! 🥰',
+        ];
+        const sweetMsg = sweetMsgs[Math.floor(Math.random() * sweetMsgs.length)];
+        gistSync.sendGift(chosenTool.name, sweetMsg).then(() => {
+          scorePopups.push({ x: W/2, y: H/3, text: '💝 ' + chosenTool.name + ' sent to ' + spName + '!', alpha: 1, dy: 0 });
+          spawnHeartBurst(W/2, H/3 - 20, 8);
+        }).catch(e => {
+          toolInventory[chosenTool.tool]++; // Refund on error
+          alert('Error: ' + e.message);
+        });
       }
       return true;
     }
@@ -4215,33 +4249,76 @@ function handleSpousePanelClick(cx, cy) {
   return true;
 }
 
+// Track previous spouse state for change detection
+let _prevSpouseHighLevel = 0;
+let _processedGiftIds = new Set();
+let _processedNoteIds = new Set();
+
+// Load processed IDs from localStorage
+try {
+  _processedGiftIds = new Set(JSON.parse(localStorage.getItem('lovematch_processed_gifts') || '[]'));
+  _processedNoteIds = new Set(JSON.parse(localStorage.getItem('lovematch_processed_notes') || '[]'));
+} catch(e) {}
+
+// Map tool names to tool numbers for inventory
+const TOOL_NAME_TO_NUM = {};
+TOOLS.forEach(t => { TOOL_NAME_TO_NUM[t.name.toLowerCase()] = t.tool; });
+
 // Spouse data callback
 function onSpouseData(data) {
-  // Check for new unread love notes
-  const notes = (data.loveNotes || []).filter(n => n.from !== gistSync.role);
-  const myRead = gistSync._lastSpouseData?.readNotes || [];
-  const unread = notes.filter(n => !myRead.includes(n.id));
-  if (unread.length > 0) {
-    const latest = unread[unread.length - 1];
-    const from = gistSync.spouseName || 'Spouse';
-    scorePopups.push({ x: W/2, y: H/4, text: from + ': ' + latest.message.slice(0, 30), alpha: 1, dy: 0 });
+  const spName = gistSync.spouseName || 'Spouse';
+
+  // ── Detect spouse level-up ──
+  const spHighLevel = data.gameProgress?.highLevel || data.gameProgress?.level || 0;
+  if (_prevSpouseHighLevel > 0 && spHighLevel > _prevSpouseHighLevel) {
+    const sweetMsgs = [
+      spName + ' just beat Level ' + spHighLevel + '! 🎉',
+      'Way to go, ' + spName + '! Level ' + spHighLevel + '! 💪',
+      spName + ' crushed Level ' + spHighLevel + '! So proud! 💕',
+      'Level ' + spHighLevel + ' done! ' + spName + ' is on fire! 🔥',
+    ];
+    const msg = sweetMsgs[Math.floor(Math.random() * sweetMsgs.length)];
+    scorePopups.push({ x: W/2, y: H/5, text: msg, alpha: 1, dy: 0 });
+    spawnHeartBurst(W/2, H/3, 15);
+    sfxLevelComplete();
+  }
+  _prevSpouseHighLevel = spHighLevel;
+
+  // ── Check for new love notes ──
+  const notes = (data.loveNotes || []).filter(n => n.from !== gistSync.role && !_processedNoteIds.has(n.id));
+  if (notes.length > 0) {
+    const latest = notes[notes.length - 1];
+    _processedNoteIds.add(latest.id);
+    try { localStorage.setItem('lovematch_processed_notes', JSON.stringify([..._processedNoteIds])); } catch(e) {}
+    scorePopups.push({ x: W/2, y: H/4, text: '💌 ' + spName + ': ' + (latest.message || '').slice(0, 40), alpha: 1, dy: 0 });
+    spawnHeartBurst(W/2, H/4 - 30, 8);
     sfxSpecial();
   }
 
-  // Check for new gifts
-  const gifts = (data.gifts || []).filter(g => g.from !== gistSync.role && !g.claimed);
-  if (gifts.length > 0) {
-    const g = gifts[gifts.length - 1];
-    scorePopups.push({ x: W/2, y: H/3, text: (gistSync.spouseName || 'Spouse') + ' sent you ' + g.tool + '!', alpha: 1, dy: 0 });
+  // ── Check for new gifts → add tools to inventory ──
+  const gifts = (data.gifts || []).filter(g => g.from !== gistSync.role && !_processedGiftIds.has(g.id));
+  for (const g of gifts) {
+    _processedGiftIds.add(g.id);
+    // Try to match the tool name to our TOOLS array
+    const toolNum = TOOL_NAME_TO_NUM[(g.tool || '').toLowerCase()];
+    if (toolNum) {
+      toolInventory[toolNum] = (toolInventory[toolNum] || 0) + 1;
+      scorePopups.push({ x: W/2, y: H/3, text: '🎁 ' + spName + ' sent you ' + g.tool + '!', alpha: 1, dy: 0 });
+    } else {
+      scorePopups.push({ x: W/2, y: H/3, text: '💝 Gift from ' + spName + ': ' + (g.tool || 'love'), alpha: 1, dy: 0 });
+    }
+    spawnHeartBurst(W/2, H/3 - 20, 12);
     sfxLevelComplete();
+  }
+  if (gifts.length > 0) {
+    try { localStorage.setItem('lovematch_processed_gifts', JSON.stringify([..._processedGiftIds])); } catch(e) {}
   }
 }
 
-// Add spouse button to HUD (heart icon in top-left area)
+// Add spouse button to HUD + "spouse online" pulsing indicator
 const _origDrawHUD = drawHUD;
 drawHUD = function() {
   _origDrawHUD();
-  // Spouse sync button (small heart icon)
   ctx.save();
   const sbSize = tileSize * 0.4;
   const sbX = W - sbSize - 12;
@@ -4249,13 +4326,43 @@ drawHUD = function() {
   ctx.font = (sbSize * 0.9) + 'px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(gistSync.isConfigured() ? '💑' : '💌', sbX + sbSize/2, sbY + sbSize/2);
+
   if (gistSync.isConfigured()) {
-    // Green dot
-    ctx.beginPath();
-    ctx.arc(sbX + sbSize - 2, sbY + 4, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#4caf50';
-    ctx.fill();
+    // Check if spouse was active recently (within 5 min)
+    const spData = gistSync._lastSpouseData;
+    let spouseOnline = false;
+    if (spData && spData.updatedAt) {
+      const ago = Date.now() - new Date(spData.updatedAt).getTime();
+      spouseOnline = ago < 5 * 60 * 1000;
+    }
+
+    if (spouseOnline) {
+      // Pulsing glow when spouse is online
+      const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 400);
+      ctx.globalAlpha = pulse;
+      ctx.font = (sbSize * 1.2) + 'px sans-serif';
+      ctx.fillText('💑', sbX + sbSize/2, sbY + sbSize/2);
+      ctx.globalAlpha = 1;
+      ctx.font = (sbSize * 0.9) + 'px sans-serif';
+      ctx.fillText('💑', sbX + sbSize/2, sbY + sbSize/2);
+      // Green "online" dot
+      ctx.beginPath();
+      ctx.arc(sbX + sbSize - 2, sbY + 4, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#4caf50';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else {
+      ctx.fillText('💑', sbX + sbSize/2, sbY + sbSize/2);
+      // Gray dot (offline)
+      ctx.beginPath();
+      ctx.arc(sbX + sbSize - 2, sbY + 4, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#999';
+      ctx.fill();
+    }
+  } else {
+    ctx.fillText('💌', sbX + sbSize/2, sbY + sbSize/2);
   }
   ctx.restore();
 };

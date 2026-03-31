@@ -545,8 +545,22 @@ class App {
     const syncStatus = this.gistSync.getStatus();
     const myName = this.state.profile.name || 'You';
     const myGender = this.state.profile.gender || 'wife';
-    const myLevel = this.state.progress.currentLevel || 1;
-    const myStars = Object.values(this.state.progress.levelStars || {}).reduce((a, b) => a + b, 0);
+
+    // Read latest progress from match.html localStorage
+    const matchHighLevel = parseInt(localStorage.getItem('lovematch_highLevel') || '1');
+    const matchStars = JSON.parse(localStorage.getItem('lovematch_stars') || '{}');
+    const myLevel = Math.max(this.state.progress.currentLevel || 1, matchHighLevel);
+    const myStars = Object.values(matchStars).reduce((a, b) => a + b, 0) || Object.values(this.state.progress.levelStars || {}).reduce((a, b) => a + b, 0);
+
+    // Push our progress to gist so spouse can see it
+    if (this.gistSync.isConfigured()) {
+      this.gistSync.syncProgress({
+        level: myLevel,
+        highLevel: myLevel,
+        totalStars: myStars,
+        levelStars: matchStars,
+      }).catch(() => {});
+    }
 
     // Default spouse data
     let spouseName = 'Spouse';
@@ -561,13 +575,21 @@ class App {
       const sd = this._cachedSpouseData;
       spouseName = sd.name || sd.profile?.name || 'Spouse';
       spouseGender = sd.role || spouseGender;
-      spouseLevel = sd.gameProgress?.level || 1;
-      spouseStars = sd.gameProgress?.score || 0;
+      spouseLevel = sd.gameProgress?.highLevel || sd.gameProgress?.level || 1;
+      spouseStars = sd.gameProgress?.totalStars || sd.gameProgress?.score || 0;
       helpRequests = (sd.helpRequests || []).filter(r => r.status === 'pending');
-      activity = (sd.loveNotes || []).slice(-5).map(n => ({
-        text: `${n.from === myGender ? 'You' : spouseName}: ${n.message}`,
+      // Combine notes and gifts into activity feed
+      const noteItems = (sd.loveNotes || []).map(n => ({
+        text: `💌 ${n.from === myGender ? 'You' : spouseName}: ${n.message}`,
         time: new Date(n.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ts: new Date(n.sentAt).getTime(),
       }));
+      const giftItems = (sd.gifts || []).map(g => ({
+        text: `🎁 ${g.from === myGender ? 'You' : spouseName} sent ${g.tool}${g.message ? ' — ' + g.message : ''}`,
+        time: new Date(g.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ts: new Date(g.sentAt).getTime(),
+      }));
+      activity = [...noteItems, ...giftItems].sort((a, b) => b.ts - a.ts).slice(0, 8);
       if (activity.length === 0) activity = [{ text: 'No recent activity yet.', time: '' }];
     }
 
@@ -1432,15 +1454,71 @@ class App {
       this.ui.showToast('Connect to your spouse first!', 'info');
       return;
     }
-    (async () => {
-      try {
-        await this.gistSync.sendGift('loveLetter', 'A gift from your spouse!');
-        this.ui.showToast('Gift sent!', 'success');
-        this.audio.playSound('gift');
-      } catch (err) {
-        this.ui.showToast('Failed: ' + err.message, 'error');
-      }
-    })();
+    // Show a tool picker overlay
+    this._showGiftPickerOverlay();
+  }
+
+  _showGiftPickerOverlay() {
+    document.getElementById('gift-picker-overlay')?.remove();
+
+    const tools = [
+      { key: 'Bomb', icon: '💣', desc: 'Explodes 3x3 area' },
+      { key: 'Lightning', icon: '⚡', desc: 'Clears row or column' },
+      { key: 'Rainbow Star', icon: '🌈', desc: 'Removes all of one type' },
+      { key: 'Magic Wand', icon: '🪄', desc: 'Remove any single tile' },
+      { key: 'Potion', icon: '🧪', desc: 'Transforms 2x2 to same type' },
+      { key: 'Love Letter', icon: '💌', desc: 'Clears the entire board!' },
+      { key: 'Stopwatch', icon: '⏱️', desc: 'Adds 15 seconds' },
+      { key: 'Cloud', icon: '☁️', desc: 'Shuffles entire board' },
+    ];
+
+    const overlay = document.createElement('div');
+    overlay.id = 'gift-picker-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    const toolCards = tools.map(t => `
+      <button class="gift-tool-card" data-tool="${t.key}" style="display:flex;align-items:center;gap:10px;background:#fff;border:2px solid #eee;border-radius:12px;padding:10px 14px;cursor:pointer;width:100%;text-align:left;transition:all 0.2s;">
+        <span style="font-size:24px">${t.icon}</span>
+        <div>
+          <strong style="font-size:14px;color:#333">${t.key}</strong>
+          <p style="font-size:11px;color:#888;margin:2px 0 0">${t.desc}</p>
+        </div>
+      </button>
+    `).join('');
+
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:20px;padding:20px;max-width:360px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <h2 style="margin:0 0 4px;font-size:18px;color:#333;text-align:center;">🎁 Send a Tool</h2>
+        <p style="font-size:13px;color:#888;text-align:center;margin:0 0 12px;">Pick a power-up to send to your spouse</p>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${toolCards}
+        </div>
+        <textarea id="gift-message-input" placeholder="Add a sweet message (optional)..." style="width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:8px;padding:8px;margin-top:12px;font-size:13px;resize:none;" rows="2"></textarea>
+        <button id="gift-picker-cancel" style="display:block;margin:10px auto 0;background:none;border:none;color:#999;font-size:14px;cursor:pointer;padding:8px;">Cancel</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Wire up tool card clicks
+    overlay.querySelectorAll('.gift-tool-card').forEach(card => {
+      card.onclick = async () => {
+        const toolKey = card.dataset.tool;
+        const msg = document.getElementById('gift-message-input')?.value?.trim();
+        overlay.remove();
+        try {
+          const sweetDefault = ['Sent with love! 💕', 'This will help, babe! ❤️', 'From me to you! 💝', 'You got this! 🥰'];
+          const message = msg || sweetDefault[Math.floor(Math.random() * sweetDefault.length)];
+          await this.gistSync.sendGift(toolKey, message);
+          this.ui.showToast(`🎁 ${toolKey} sent to your spouse!`, 'success');
+          this.audio.playSound('gift');
+        } catch (err) {
+          this.ui.showToast('Failed: ' + err.message, 'error');
+        }
+      };
+    });
+
+    document.getElementById('gift-picker-cancel').onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   }
 
   _onRespondToHelp(requestId) {
@@ -1457,19 +1535,40 @@ class App {
 
   _startGistPolling() {
     if (!this.gistSync.isConfigured()) return;
+    this._prevSpouseHighLevel = 0;
+    this._seenNoteIds = new Set();
+    this._seenGiftIds = new Set();
+
     this.gistSync.startPolling(
       (spouseData) => {
+        const prevData = this._cachedSpouseData;
         this._cachedSpouseData = spouseData;
-        // Check for new love notes
-        const unread = (spouseData.loveNotes || []).filter(n => !n.read);
-        if (unread.length > 0) {
-          const latest = unread[unread.length - 1];
-          this.ui.showToast(`Love note: "${latest.message}"`, 'love');
+        const spName = spouseData.name || spouseData.profile?.name || 'Spouse';
+
+        // ── Detect spouse level-up ──
+        const spHighLevel = spouseData.gameProgress?.highLevel || spouseData.gameProgress?.level || 0;
+        if (this._prevSpouseHighLevel > 0 && spHighLevel > this._prevSpouseHighLevel) {
+          const sweetMsgs = [
+            `${spName} just beat Level ${spHighLevel}! 🎉`,
+            `Way to go, ${spName}! Level ${spHighLevel}! 💪`,
+            `${spName} crushed Level ${spHighLevel}! So proud! 💕`,
+          ];
+          this.ui.showToast(sweetMsgs[Math.floor(Math.random() * sweetMsgs.length)], 'love');
         }
-        // Check for gifts
-        const unclaimed = (spouseData.gifts || []).filter(g => !g.claimed);
-        if (unclaimed.length > 0) {
-          this.ui.showToast(`You received a gift from your spouse!`, 'success');
+        this._prevSpouseHighLevel = spHighLevel;
+
+        // ── Check for new love notes (only show ones we haven't seen) ──
+        const notes = (spouseData.loveNotes || []).filter(n => n.from !== this.gistSync.role && !this._seenNoteIds.has(n.id));
+        for (const n of notes) {
+          this._seenNoteIds.add(n.id);
+          this.ui.showToast(`💌 ${spName}: "${(n.message || '').slice(0, 50)}"`, 'love');
+        }
+
+        // ── Check for new gifts ──
+        const gifts = (spouseData.gifts || []).filter(g => g.from !== this.gistSync.role && !this._seenGiftIds.has(g.id));
+        for (const g of gifts) {
+          this._seenGiftIds.add(g.id);
+          this.ui.showToast(`🎁 ${spName} sent you ${g.tool}!${g.message ? ' "' + g.message + '"' : ''}`, 'success');
         }
       },
       (status) => {
