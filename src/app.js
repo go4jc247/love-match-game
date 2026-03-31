@@ -27,7 +27,7 @@ function createDefaultState() {
     bible: { readVerses: [], notes: {}, streak: 0 },
     spouse: { notes: [], gifts: [], connected: false },
     quizzes: { completed: {}, results: {} },
-    settings: { music: true, sfx: true, musicVolume: 0.8, sfxVolume: 0.8 },
+    settings: { music: false, sfx: true, musicVolume: 0.8, sfxVolume: 0.8 },
   };
 }
 
@@ -282,6 +282,9 @@ class App {
       case 'settings:resetProgress':
         this._onResetProgress();
         break;
+      case 'settings:musicMap':
+        this.audio.mp3Player.setScreenTrack(event.screen, event.trackId);
+        break;
       case 'settings:back':
         this.showMenu();
         break;
@@ -364,7 +367,7 @@ class App {
     this.engine = null;
     this.selectedTile = null;
 
-    this.audio.playMusic(this.state.profile.theme || 'wife');
+    this.audio.playMusicForScreen('mainMenu');
 
     const unreadNotes = this.spouseConnection
       ? this.spouseConnection.getUnreadCount()
@@ -378,6 +381,7 @@ class App {
   }
 
   showLevelMap() {
+    this.audio.playMusicForScreen('levelMap');
     const allLevels = this.levelManager.getLevels();
     // Build progress map: { levelNumber: { stars, unlocked } }
     const currentLevel = this.state.progress.currentLevel;
@@ -395,6 +399,7 @@ class App {
   }
 
   showBibleReading() {
+    this.audio.playMusicForScreen('bible');
     const verse = this.bibleReader.getDailyVerse();
     const progress = this.bibleReader.getReadingProgress();
     const streak = this.bibleReader.getStreak();
@@ -418,6 +423,7 @@ class App {
   }
 
   showLoveNotes() {
+    this.audio.playMusicForScreen('loveNotes');
     if (!this.spouseConnection) {
       this.ui.showToast('Spouse connection not set up.', 'info');
       return;
@@ -434,6 +440,7 @@ class App {
   }
 
   showQuizList() {
+    this.audio.playMusicForScreen('quizzes');
     const quizzes = this.quizManager.getAvailableQuizzes();
     this.ui.showScreen('quizList', {
       quizzes,
@@ -442,6 +449,7 @@ class App {
   }
 
   showSpouseDashboard() {
+    this.audio.playMusicForScreen('us');
     if (!this.spouseConnection) {
       this.ui.showToast('Spouse connection not set up.', 'info');
       return;
@@ -464,10 +472,14 @@ class App {
   }
 
   showSettings() {
+    this.audio.playMusicForScreen('settings');
     this.ui.showScreen('settings', {
       soundOn: this.state.settings.sfx,
       musicOn: this.state.settings.music,
       theme: this.state.profile.theme,
+      musicTracks: this.audio.mp3Player.getTracks(),
+      screenMusicMap: this.audio.mp3Player.getScreenMap(),
+      screenNames: this.audio.mp3Player.getScreenNames(),
     });
   }
 
@@ -523,8 +535,8 @@ class App {
     // Wire engine events
     this._bindEngineEvents();
 
-    // Play level music
-    this.audio.playMusic(theme);
+    // Play gameplay music with crossfade
+    this.audio.playMusicForScreen('gameplay');
 
     // Show HUD
     this.ui.hideAllScreens();
@@ -1052,7 +1064,7 @@ class App {
     });
     this.ui.showToast('+5 moves!', 'success');
     this.audio.playSound('bonus');
-    this.audio.playMusic(this.state.profile.theme || 'wife');
+    this.audio.playMusicForScreen('gameplay');
 
     this.saveGame();
   }

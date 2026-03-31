@@ -749,6 +749,185 @@ class MusicGenerator {
 }
 
 
+// ─── MP3 Music Player with Crossfade ────────────────────────────────
+
+const MUSIC_TRACKS = [
+  { id: 'track-01', file: 'music/track-01.mp3', label: 'Track 1' },
+  { id: 'track-02', file: 'music/track-02.mp3', label: 'Track 2' },
+  { id: 'track-03', file: 'music/track-03.mp3', label: 'Track 3' },
+  { id: 'track-04', file: 'music/track-04.mp3', label: 'Track 4' },
+  { id: 'track-05', file: 'music/track-05.mp3', label: 'Track 5' },
+  { id: 'track-06', file: 'music/track-06.mp3', label: 'Track 6' },
+  { id: 'track-07', file: 'music/track-07.mp3', label: 'Track 7' },
+  { id: 'track-08', file: 'music/track-08.mp3', label: 'Track 8' },
+  { id: 'track-09', file: 'music/track-09.mp3', label: 'Track 9' },
+  { id: 'track-10', file: 'music/track-10.mp3', label: 'Track 10' },
+];
+
+const SCREEN_MUSIC_DEFAULTS = {
+  mainMenu:   'track-01',
+  levelMap:   'track-02',
+  gameplay:   'track-03',
+  bible:      'track-04',
+  loveNotes:  'track-05',
+  quizzes:    'track-06',
+  us:         'track-07',
+  settings:   'track-08',
+};
+
+const CROSSFADE_MS = 2000; // 2-second crossfade
+
+class Mp3MusicPlayer {
+  constructor() {
+    this._audios = new Map();       // trackId -> HTMLAudioElement
+    this._currentTrackId = null;
+    this._volume = 0.4;
+    this._muted = false;
+    this._screenMap = { ...SCREEN_MUSIC_DEFAULTS };
+    this._fadeInterval = null;
+
+    // Load saved screen-to-track mapping
+    try {
+      const saved = localStorage.getItem('lovematch_music_map');
+      if (saved) Object.assign(this._screenMap, JSON.parse(saved));
+    } catch {}
+  }
+
+  /** Preload all tracks */
+  preload() {
+    for (const track of MUSIC_TRACKS) {
+      if (!this._audios.has(track.id)) {
+        const audio = new Audio(track.file);
+        audio.loop = true;
+        audio.volume = 0;
+        audio.preload = 'auto';
+        this._audios.set(track.id, audio);
+      }
+    }
+  }
+
+  /** Get current screen → track mapping */
+  getScreenMap() { return { ...this._screenMap }; }
+
+  /** Set which track plays on a given screen */
+  setScreenTrack(screen, trackId) {
+    this._screenMap[screen] = trackId;
+    try {
+      localStorage.setItem('lovematch_music_map', JSON.stringify(this._screenMap));
+    } catch {}
+  }
+
+  /** Get all available tracks */
+  getTracks() { return MUSIC_TRACKS; }
+
+  /** Get all screen names */
+  getScreenNames() { return Object.keys(SCREEN_MUSIC_DEFAULTS); }
+
+  /** Play the track assigned to a screen, with crossfade */
+  playForScreen(screenName) {
+    const trackId = this._screenMap[screenName];
+    if (!trackId || trackId === 'none') {
+      this.stop();
+      return;
+    }
+    this.crossfadeTo(trackId);
+  }
+
+  /** Crossfade from current track to a new one */
+  crossfadeTo(trackId) {
+    if (trackId === this._currentTrackId) return;
+    if (this._muted) {
+      this._currentTrackId = trackId;
+      return;
+    }
+
+    const newAudio = this._audios.get(trackId);
+    if (!newAudio) return;
+
+    const oldAudio = this._currentTrackId ? this._audios.get(this._currentTrackId) : null;
+    const oldTrackId = this._currentTrackId;
+    this._currentTrackId = trackId;
+
+    // Clear any in-progress fade
+    if (this._fadeInterval) clearInterval(this._fadeInterval);
+
+    // Start new track at volume 0
+    newAudio.volume = 0;
+    newAudio.currentTime = 0;
+    newAudio.play().catch(() => {});
+
+    const steps = 40;
+    const stepMs = CROSSFADE_MS / steps;
+    let step = 0;
+
+    this._fadeInterval = setInterval(() => {
+      step++;
+      const progress = step / steps;
+
+      // Fade new in
+      newAudio.volume = Math.min(this._volume, this._volume * progress);
+
+      // Fade old out
+      if (oldAudio) {
+        oldAudio.volume = Math.max(0, this._volume * (1 - progress));
+      }
+
+      if (step >= steps) {
+        clearInterval(this._fadeInterval);
+        this._fadeInterval = null;
+        newAudio.volume = this._volume;
+        if (oldAudio) {
+          oldAudio.pause();
+          oldAudio.volume = 0;
+        }
+      }
+    }, stepMs);
+  }
+
+  /** Stop all music */
+  stop() {
+    if (this._fadeInterval) clearInterval(this._fadeInterval);
+    this._fadeInterval = null;
+    for (const [id, audio] of this._audios) {
+      audio.pause();
+      audio.volume = 0;
+    }
+    this._currentTrackId = null;
+  }
+
+  /** Set volume (0-1) */
+  setVolume(vol) {
+    this._volume = Math.max(0, Math.min(1, vol));
+    const current = this._currentTrackId ? this._audios.get(this._currentTrackId) : null;
+    if (current && !this._muted) {
+      current.volume = this._volume;
+    }
+  }
+
+  /** Mute */
+  mute() {
+    this._muted = true;
+    for (const [, audio] of this._audios) {
+      audio.pause();
+      audio.volume = 0;
+    }
+  }
+
+  /** Unmute and resume current track */
+  unmute() {
+    this._muted = false;
+    if (this._currentTrackId) {
+      const audio = this._audios.get(this._currentTrackId);
+      if (audio) {
+        audio.volume = this._volume;
+        audio.play().catch(() => {});
+      }
+    }
+  }
+
+  get isMuted() { return this._muted; }
+}
+
 // ─── AudioManager ────────────────────────────────────────────────────
 
 export class AudioManager {
@@ -758,6 +937,7 @@ export class AudioManager {
     this.sfxGain = null;
     this.musicGain = null;
     this.musicGenerator = null;
+    this.mp3Player = new Mp3MusicPlayer();
     this._muted = false;
     this._sfxVolume = 0.7;
     this._musicVolume = 0.4;
@@ -789,6 +969,8 @@ export class AudioManager {
     this.musicGain.connect(this.masterGain);
 
     this.musicGenerator = new MusicGenerator(this.ctx, this.musicGain);
+    this.mp3Player.preload();
+    this.mp3Player.setVolume(this._musicVolume);
     this._initialized = true;
   }
 
@@ -822,7 +1004,18 @@ export class AudioManager {
   }
 
   /**
-   * Start looping background music for a theme.
+   * Play music for a specific screen (uses MP3 crossfade player).
+   * @param {string} screenName - e.g. 'mainMenu', 'gameplay', 'bible'
+   */
+  playMusicForScreen(screenName) {
+    if (!this._initialized) return;
+    if (this._muted) return;
+    this.musicGenerator.stop(); // stop procedural music
+    this.mp3Player.playForScreen(screenName);
+  }
+
+  /**
+   * Start looping background music for a theme (legacy/fallback).
    * @param {'wife'|'husband'} theme
    */
   playMusic(theme) {
@@ -831,19 +1024,11 @@ export class AudioManager {
       this.ctx.resume();
     }
 
-    // Stop current music if playing
-    this.stopMusic();
-
     this._currentTheme = theme;
     if (this._muted) return;
 
-    if (theme === 'wife') {
-      this.musicGenerator.playWife();
-    } else if (theme === 'husband') {
-      this.musicGenerator.playHusband();
-    } else {
-      console.warn(`[AudioManager] Unknown music theme: ${theme}`);
-    }
+    // Use MP3 player if a screen context is active, otherwise fallback to procedural
+    // (playMusicForScreen is preferred — this is kept for backwards compat)
   }
 
   /**
@@ -853,6 +1038,7 @@ export class AudioManager {
     if (this.musicGenerator) {
       this.musicGenerator.stop();
     }
+    this.mp3Player.stop();
     this._currentTheme = null;
   }
 
@@ -865,6 +1051,7 @@ export class AudioManager {
     if (this._initialized && this.musicGain) {
       this.musicGain.gain.setValueAtTime(this._musicVolume, this.ctx.currentTime);
     }
+    this.mp3Player.setVolume(this._musicVolume);
   }
 
   /**
@@ -889,6 +1076,7 @@ export class AudioManager {
     if (this.musicGenerator) {
       this.musicGenerator.stop();
     }
+    this.mp3Player.mute();
   }
 
   /**
@@ -899,10 +1087,7 @@ export class AudioManager {
     if (this._initialized && this.masterGain) {
       this.masterGain.gain.setValueAtTime(1, this.ctx.currentTime);
     }
-    // Resume music if it was playing when muted
-    if (this._currentTheme) {
-      this.playMusic(this._currentTheme);
-    }
+    this.mp3Player.unmute();
   }
 
   /**

@@ -97,19 +97,22 @@ export class UIManager {
     this.screens.set(screenName, panel);
     this.activeScreens.add(screenName);
 
-    // Trigger enter animation
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        panel.classList.add('lm-screen--visible');
-      });
-    });
+    // Show immediately — transition animations were unreliable
+    panel.classList.add('lm-screen--visible');
 
     return panel;
   }
 
-  hideScreen(screenName) {
+  hideScreen(screenName, immediate = false) {
     const panel = this.screens.get(screenName);
     if (!panel) return;
+
+    if (immediate) {
+      panel.remove();
+      this.screens.delete(screenName);
+      this.activeScreens.delete(screenName);
+      return;
+    }
 
     panel.classList.remove('lm-screen--visible');
     panel.classList.add('lm-screen--exiting');
@@ -127,9 +130,9 @@ export class UIManager {
     setTimeout(onEnd, 600);
   }
 
-  hideAllScreens() {
+  hideAllScreens(immediate = true) {
     for (const name of [...this.activeScreens]) {
-      this.hideScreen(name);
+      this.hideScreen(name, immediate);
     }
   }
 
@@ -180,9 +183,7 @@ export class UIManager {
     this._append(overlay, box);
     this.root.appendChild(overlay);
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => overlay.classList.add('lm-screen--visible'));
-    });
+    overlay.classList.add('lm-screen--visible');
   }
 
   _removeOverlay(el) {
@@ -695,7 +696,55 @@ export class UIManager {
     const aboutBtn = this._el('button', 'lm-btn lm-btn--secondary lm-settings__action', { text: 'About Love Match' });
     aboutBtn.onclick = () => this._emit('settings:about');
 
-    this._append(list, soundRow, musicRow, themeRow, resetBtn, exportBtn, importBtn, aboutBtn);
+    this._append(list, soundRow, musicRow, themeRow);
+
+    // Music Track Assignment section
+    if (data.musicTracks && data.screenNames) {
+      const musicSection = this._el('div', 'lm-settings__music-section');
+      const musicTitle = this._el('h3', 'lm-settings__section-title', { text: '\ud83c\udfb5 Screen Music' });
+      musicSection.appendChild(musicTitle);
+
+      const screenLabels = {
+        mainMenu: 'Main Menu',
+        levelMap: 'Level Map',
+        gameplay: 'Gameplay',
+        bible: 'Bible Reading',
+        loveNotes: 'Love Notes',
+        quizzes: 'Quizzes',
+        us: 'Us / Spouse',
+        settings: 'Settings',
+      };
+
+      for (const screenName of data.screenNames) {
+        const row = this._el('div', 'lm-settings__music-row');
+        const label = this._el('span', 'lm-settings__music-label', {
+          text: screenLabels[screenName] || screenName
+        });
+
+        const select = this._el('select', 'lm-select lm-select--small');
+        const noneOpt = this._el('option', null, { text: 'None', value: 'none' });
+        select.appendChild(noneOpt);
+
+        for (const track of data.musicTracks) {
+          const opt = this._el('option', null, { text: track.label, value: track.id });
+          select.appendChild(opt);
+        }
+
+        const currentTrack = data.screenMusicMap[screenName] || 'none';
+        select.value = currentTrack;
+
+        select.onchange = () => {
+          this._emit('settings:musicMap', { screen: screenName, trackId: select.value });
+        };
+
+        this._append(row, label, select);
+        musicSection.appendChild(row);
+      }
+
+      list.appendChild(musicSection);
+    }
+
+    this._append(list, resetBtn, exportBtn, importBtn, aboutBtn);
     this._append(screen, header, list);
     return screen;
   }
@@ -908,9 +957,6 @@ const BASE_STYLES = `
   position: absolute;
   inset: 0;
   pointer-events: auto;
-  opacity: 0;
-  transform: scale(0.96);
-  transition: opacity 0.35s ease, transform 0.35s ease;
   overflow-y: auto;
   overflow-x: hidden;
   background: #fff;
@@ -918,13 +964,12 @@ const BASE_STYLES = `
 
 .lm-screen--visible {
   opacity: 1;
-  transform: scale(1);
 }
 
 .lm-screen--exiting {
   opacity: 0;
-  transform: scale(0.94);
   pointer-events: none;
+  transition: opacity 0.3s ease;
 }
 
 /* ---- Buttons ---- */
@@ -1898,6 +1943,45 @@ const BASE_STYLES = `
 
 .lm-settings__action {
   width: 100%;
+}
+
+.lm-settings__music-section {
+  margin-top: 8px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.lm-settings__section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #c2185b;
+  margin: 0 0 10px 0;
+}
+
+.lm-settings__music-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.lm-settings__music-row:last-child {
+  border-bottom: none;
+}
+
+.lm-settings__music-label {
+  font-size: 13px;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.lm-select--small {
+  font-size: 12px;
+  padding: 4px 8px;
+  max-width: 140px;
 }
 
 /* ---- Love Notes ---- */

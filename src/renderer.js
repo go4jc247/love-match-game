@@ -593,7 +593,9 @@ export class Renderer {
     this.tileSize = Math.floor(maxBoardSize / GRID_SIZE);
     const boardPx = this.tileSize * GRID_SIZE;
     this.boardX = Math.floor((w - boardPx) / 2);
-    this.boardY = Math.floor((h - boardPx) / 2) + 20; // slight offset for score area
+    // Position board below HUD area (~60px) with some padding, not vertically centered
+    const hudHeight = 70;
+    this.boardY = hudHeight + Math.floor((h - hudHeight - boardPx) / 2);
   }
 
   _tileCenter(row, col) {
