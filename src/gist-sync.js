@@ -120,7 +120,7 @@ export class GistSync {
       headers: this._headers(),
       body: JSON.stringify({
         description: 'Love Match - Spouse Sync Channel',
-        public: false,
+        public: false,  // Private gist — both phones must use the same GitHub token
         files,
       }),
     });

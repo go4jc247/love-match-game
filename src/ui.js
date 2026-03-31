@@ -871,21 +871,28 @@ export class UIManager {
 
     if (syncStatus.configured) {
       // Connected state
+      const spouseFound = data.spouse?.name && data.spouse.name !== 'Spouse';
       connSection.innerHTML = `
-        <div class="lm-spouse-dash__conn-status lm-spouse-dash__conn-status--ok">
-          <span class="lm-spouse-dash__conn-dot"></span>
-          <span>Connected as <strong>${syncStatus.role}</strong></span>
+        <div class="lm-spouse-dash__conn-status ${spouseFound ? 'lm-spouse-dash__conn-status--ok' : ''}">
+          <span class="lm-spouse-dash__conn-dot" style="${spouseFound ? '' : 'background:#ff9800'}"></span>
+          <span>Connected as <strong>${syncStatus.role}</strong> ${spouseFound ? '— spouse found!' : '— waiting for spouse...'}</span>
         </div>
-        <p class="lm-spouse-dash__conn-code">Channel: <code>${(syncStatus.gistId || '').slice(0, 8)}...</code></p>
+        <p class="lm-spouse-dash__conn-code">Channel: <code>${syncStatus.gistId || ''}</code></p>
+        <p class="lm-spouse-dash__conn-info" style="font-size:11px">Share this full code with your spouse. Use the SAME GitHub token on both phones.</p>
       `;
+      const btnRow = this._el('div', 'lm-spouse-dash__conn-btns');
+      const refreshBtn = this._el('button', 'lm-btn lm-btn--small lm-btn--primary', { text: '\ud83d\udd04 Refresh' });
+      refreshBtn.onclick = () => this._emit('spouseDash:refresh');
       const disconnectBtn = this._el('button', 'lm-btn lm-btn--small lm-btn--outline', { text: 'Disconnect' });
       disconnectBtn.onclick = () => this._emit('spouseDash:disconnect');
-      connSection.appendChild(disconnectBtn);
+      this._append(btnRow, refreshBtn, disconnectBtn);
+      connSection.appendChild(btnRow);
     } else {
       // Not connected — show setup
       connSection.innerHTML = `
         <h3 class="lm-spouse-dash__section-title">\ud83d\udd17 Connect to Spouse</h3>
         <p class="lm-spouse-dash__conn-info">Connect your phones to share progress, send love notes, and gift powerups!</p>
+        <p class="lm-spouse-dash__conn-info" style="font-weight:600;color:#c2185b">\u26a0\ufe0f Use the SAME GitHub token on both phones (same account). One phone = Wife, other = Husband.</p>
         <div class="lm-spouse-dash__conn-form">
           <label class="lm-spouse-dash__label">GitHub Token <span style="font-size:0.75em;color:#999">(gist scope)</span></label>
           <input class="lm-input" type="password" placeholder="ghp_xxxxxxxxxxxx" id="sync-token-input" autocomplete="off" />

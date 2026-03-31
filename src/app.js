@@ -318,6 +318,9 @@ class App {
       case 'spouseDash:joinChannel':
         this._onJoinChannel(event.token, event.channelCode);
         break;
+      case 'spouseDash:refresh':
+        this._onRefreshSync();
+        break;
       case 'spouseDash:disconnect':
         this._onDisconnectSync();
         break;
@@ -1260,6 +1263,22 @@ class App {
       this.showSpouseDashboard(); // Refresh the UI
     } catch (err) {
       this.ui.showToast('Failed: ' + err.message, 'error');
+    }
+  }
+
+  async _onRefreshSync() {
+    try {
+      this.ui.showToast('Checking for spouse...', 'info');
+      const spouseData = await this.gistSync.pullSpouseData();
+      if (spouseData) {
+        this._cachedSpouseData = spouseData;
+        this.ui.showToast(`Found: ${spouseData.name || spouseData.role || 'Spouse connected!'}`, 'success');
+      } else {
+        this.ui.showToast('Spouse hasn\'t joined yet. Make sure they use the same token and channel code.', 'info');
+      }
+      this.showSpouseDashboard();
+    } catch (err) {
+      this.ui.showToast('Sync error: ' + err.message, 'error');
     }
   }
 
