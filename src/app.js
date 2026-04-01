@@ -435,7 +435,7 @@ class App {
     } catch (e) { /* ignore sync errors */ }
 
     // Use 51 levels (matching the match game's LEVEL_PROGRESSION)
-    const totalLevels = 51;
+    const totalLevels = 52;
     const allLevels = [];
     for (let i = 1; i <= totalLevels; i++) {
       allLevels.push({ id: i, number: i });
@@ -444,7 +444,7 @@ class App {
     const currentLevel = this.state.progress.currentLevel || 1;
     const progressMap = {};
     // Level 51 is always unlocked (test level)
-    const ALWAYS_UNLOCKED = [51];
+    const ALWAYS_UNLOCKED = [51, 52];
     for (const level of allLevels) {
       const num = level.id;
       const stars = this.state.progress.levelStars[num] || 0;
