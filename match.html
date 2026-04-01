@@ -318,12 +318,38 @@ const LEVEL_PROGRESSION = [
 
 function getLevelConfig(lvl) {
   const idx = Math.min(lvl - 1, LEVEL_PROGRESSION.length - 1);
-  const cfg = LEVEL_PROGRESSION[idx];
+  let cfg = { ...LEVEL_PROGRESSION[idx] };
   // Scale target for levels beyond the table
   if (lvl > LEVEL_PROGRESSION.length) {
-    return { ...cfg, target: cfg.target + (lvl - LEVEL_PROGRESSION.length) * 1500 };
+    cfg.target = cfg.target + (lvl - LEVEL_PROGRESSION.length) * 1500;
   }
+
+  // Determine level mode: odd levels = timer, even levels = moves
+  cfg.mode = (lvl % 2 === 1) ? 'timer' : 'moves';
+
+  // Override time based on difficulty tier
+  if (lvl <= 5) { cfg.time = 90; cfg.moves = 30; }
+  else if (lvl <= 10) { cfg.time = 120; cfg.moves = 35; }
+  else if (lvl <= 15) { cfg.time = 150; cfg.moves = 40; }
+  else if (lvl <= 20) { cfg.time = 180; cfg.moves = 45; }
+  else { cfg.time = 210; cfg.moves = 50; }
+
   return cfg;
+}
+
+// Apply difficulty multipliers to a level config
+function applyDifficulty(cfg, difficulty) {
+  const c = { ...cfg };
+  if (difficulty === 'easy') {
+    c.time = Math.round(c.time * 1.4);
+    c.moves = Math.round(c.moves * 1.4);
+    c.target = Math.round(c.target * 0.7);
+  } else if (difficulty === 'hard') {
+    c.time = Math.round(c.time * 0.7);
+    c.moves = Math.round(c.moves * 0.7);
+    c.target = Math.round(c.target * 1.3);
+  }
+  return c;
 }
 
 // Board mask: true = active cell, false = voided (no tile)
@@ -578,6 +604,9 @@ let grid = [];       // grid[row][col] = type index or -1
 let special = [];    // special[row][col] = tool number (1-3) or 0 (normal gem)
 let score = 0;
 let timeLeft = 60; // countdown timer — overridden by setupLevel()
+let movesLeft = 0; // move counter for move-based levels
+let currentDifficulty = 'normal'; // 'easy', 'normal', 'hard'
+let difficultyScoreMultiplier = 1.0; // score multiplier for hard mode
 let level = loadProgress();
 let selected = null; // {row, col}
 let gameOver = false;
@@ -586,6 +615,7 @@ let paused = false;
 // Tutorial/intro overlay state
 let showingTutorial = false;
 let tutorialText = '';
+let tutorialDiffBtns = []; // difficulty button rects for click detection
 
 // Level completion state
 let levelComplete = false;
@@ -1235,8 +1265,8 @@ function doSwap(r1, c1, r2, c2) {
     const sp2 = special[r2][c2];
 
     if (sp1 > 0 || sp2 > 0) {
-      // Consume the move
-      // Timer-based: no move decrement needed
+      // Consume the move for move-based levels
+      if (getLevelConfig(level).mode === 'moves' && movesLeft > 0) { movesLeft--; }
 
       // Check for special+special combo
       if (sp1 > 0 && sp2 > 0) {
@@ -1270,7 +1300,8 @@ function doSwap(r1, c1, r2, c2) {
       special[r2][c2] = tmpSp2;
       animateSwapBack(r1, c1, r2, c2);
     } else {
-      // Timer-based: no move decrement needed
+      // Decrement moves for move-based levels on successful swap
+      if (getLevelConfig(level).mode === 'moves' && movesLeft > 0) { movesLeft--; }
       cascadeLevel = 0;
       lastSwap = { r1, c1, r2, c2 };
       processMatches();
@@ -1304,8 +1335,10 @@ function animateSwapBack(r1, c1, r2, c2) {
 function processMatches() {
   const groups = getMatchGroups();
   if (groups.length === 0) {
-    // Check game over
-    if (timeLeft <= 0) {
+    // Check game over (timer or moves exhausted)
+    if (getLevelConfig(level).mode === 'timer' && timeLeft <= 0) {
+      gameOver = true;
+    } else if (getLevelConfig(level).mode === 'moves' && movesLeft <= 0) {
       gameOver = true;
     }
     // Check if any valid moves exist — if not, shuffle the board
@@ -1367,7 +1400,7 @@ function processMatches() {
     }
   }
 
-  score += totalScore;
+  score += Math.round(totalScore * difficultyScoreMultiplier);
   sfxMatch(cascadeLevel);
   checkLevelComplete();
   lastSwap = null; // Only use swap position for the initial match, not cascades
@@ -1565,7 +1598,7 @@ function damageAdjacentObstacles(clearedCells) {
 
 function checkLevelComplete() {
   if (levelComplete || gameOver) return;
-  const cfg = getLevelConfig(level);
+  const cfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
   if (score >= cfg.target) {
     levelComplete = true;
     sfxLevelComplete();
@@ -2432,14 +2465,24 @@ function useMagnet(row, col) {
   }));
 }
 
-// Tool 5: Stopwatch — Adds time to the countdown timer
+// Tool 5: Stopwatch — Adds time (timer mode) or moves (moves mode)
 function useStopwatch() {
-  timeLeft += STOPWATCH_BONUS;
-  locked = false;
-  scorePopups.push({
-    x: W / 2, y: H / 2,
-    text: '+' + STOPWATCH_BONUS + 's!', alpha: 1, dy: 0,
-  });
+  if (getLevelConfig(level).mode === 'moves') {
+    const bonusMoves = 5;
+    movesLeft += bonusMoves;
+    locked = false;
+    scorePopups.push({
+      x: W / 2, y: H / 2,
+      text: '+' + bonusMoves + ' moves!', alpha: 1, dy: 0,
+    });
+  } else {
+    timeLeft += STOPWATCH_BONUS;
+    locked = false;
+    scorePopups.push({
+      x: W / 2, y: H / 2,
+      text: '+' + STOPWATCH_BONUS + 's!', alpha: 1, dy: 0,
+    });
+  }
 }
 
 // Tool 6: Potion — Transforms 2x2 area into the tapped tile's type
@@ -3450,7 +3493,7 @@ function handleRestartClick(cx, cy) {
   if (cx >= btnX && cx <= btnX + btnW && cy >= btnY && cy <= btnY + btnH) {
     // Save stars for completed level
     if (levelComplete) {
-      const cfg = getLevelConfig(level);
+      const cfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
       const t = cfg.target;
       const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
       saveLevelStars(level, stars);
@@ -3464,7 +3507,7 @@ function handleRestartClick(cx, cy) {
   if ((launchedFromApp || levelComplete) && cx >= btnX && cx <= btnX + btnW && cy >= btn2Y && cy <= btn2Y + btnH) {
     // Save stars before leaving
     if (levelComplete) {
-      const cfg = getLevelConfig(level);
+      const cfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
       const t = cfg.target;
       const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
       saveLevelStars(level, stars);
@@ -3485,12 +3528,19 @@ function restartGame() {
     level++;
     saveProgress();
   }
-  // Otherwise retry same level
+  // Otherwise retry same level — reset difficulty to normal for new level
+  if (levelComplete) { currentDifficulty = 'normal'; difficultyScoreMultiplier = 1.0; }
   setupLevel(level);
   initToolInventory();
   score = 0;
-  const cfg = getLevelConfig(level);
-  timeLeft = cfg.time;
+  const cfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
+  if (getLevelConfig(level).mode === 'timer') {
+    timeLeft = cfg.time;
+    movesLeft = 0;
+  } else {
+    movesLeft = cfg.moves;
+    timeLeft = 99999;
+  }
   gameOver = false;
   paused = false;
   selected = null;
@@ -3634,9 +3684,29 @@ canvas.addEventListener('pointerdown', (e) => {
   if (locked || paused || gameOver) {
     if (gameOver) handleRestartClick(pos.x, pos.y);
     else if (showingTutorial) {
-      // Dismiss tutorial and start the level
-      showingTutorial = false;
-      paused = false;
+      // Check if a difficulty button was tapped
+      let diffTapped = false;
+      for (const btn of tutorialDiffBtns) {
+        if (pos.x >= btn.x && pos.x <= btn.x + btn.w && pos.y >= btn.y && pos.y <= btn.y + btn.h) {
+          currentDifficulty = btn.diff;
+          difficultyScoreMultiplier = btn.diff === 'hard' ? 1.5 : 1.0;
+          diffTapped = true;
+          break;
+        }
+      }
+      if (!diffTapped) {
+        // Dismiss tutorial and start the level with chosen difficulty
+        const cfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
+        if (cfg.mode === 'timer') {
+          timeLeft = cfg.time;
+          movesLeft = 0;
+        } else {
+          movesLeft = cfg.moves;
+          timeLeft = 99999; // no time limit for move-based levels
+        }
+        showingTutorial = false;
+        paused = false;
+      }
     }
     else handlePauseClick(pos.x, pos.y);
     return;
@@ -3844,6 +3914,14 @@ function drawObstacle(row, col, obs) {
   const def = OBSTACLE_TYPES[obs.type];
   if (!def) return;
 
+  // Dark background behind obstacle so it stands out from normal tiles
+  ctx.save();
+  const bgRadius = tileSize * 0.12;
+  drawRoundedRect(x, y, w, h, bgRadius);
+  ctx.fillStyle = 'rgba(40, 30, 50, 0.55)';
+  ctx.fill();
+  ctx.restore();
+
   // For ice: draw the gem behind at reduced opacity (gem is visible through ice)
   if (obs.type === 'ice') {
     const gemType = grid[row][col];
@@ -4015,26 +4093,50 @@ function drawHUD() {
   ctx.textBaseline = 'top';
   ctx.fillText('Level ' + level, cx, 8);
 
-  // Score with target
-  const lvlCfg = getLevelConfig(level);
+  // Score with target (adjusted for difficulty)
+  const lvlCfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
   ctx.font = 'bold ' + (tileSize * 0.45) + 'px sans-serif';
   ctx.fillStyle = score >= lvlCfg.target ? '#4caf50' : '#880e4f';
   ctx.fillText(score.toLocaleString() + ' / ' + lvlCfg.target.toLocaleString(), cx, 8 + tileSize * 0.35);
 
-  // Timer
-  const mins = Math.floor(Math.max(0, timeLeft) / 60);
-  const secs = Math.floor(Math.max(0, timeLeft) % 60);
-  const timerStr = mins + ':' + (secs < 10 ? '0' : '') + secs;
+  // Timer or Moves display
+  const lvlMode = getLevelConfig(level).mode;
   ctx.font = 'bold ' + (tileSize * 0.3) + 'px sans-serif';
-  // Flash red when low time
-  if (timeLeft <= 10 && !gameOver) {
-    const flash = Math.sin(performance.now() / 200) > 0;
-    ctx.fillStyle = flash ? '#ff1744' : '#ad1457';
-  } else {
-    ctx.fillStyle = '#ad1457';
-  }
   ctx.textAlign = 'left';
-  ctx.fillText('⏱ ' + timerStr, 12, 15);
+  if (lvlMode === 'moves') {
+    // Moves counter
+    if (movesLeft <= 5 && !gameOver) {
+      const flash = Math.sin(performance.now() / 200) > 0;
+      ctx.fillStyle = flash ? '#ff1744' : '#ad1457';
+    } else {
+      ctx.fillStyle = '#ad1457';
+    }
+    ctx.fillText('\uD83D\uDD04 ' + movesLeft + ' moves', 12, 15);
+  } else {
+    // Timer
+    const mins = Math.floor(Math.max(0, timeLeft) / 60);
+    const secs = Math.floor(Math.max(0, timeLeft) % 60);
+    const timerStr = mins + ':' + (secs < 10 ? '0' : '') + secs;
+    // Flash red when low time
+    if (timeLeft <= 10 && !gameOver) {
+      const flash = Math.sin(performance.now() / 200) > 0;
+      ctx.fillStyle = flash ? '#ff1744' : '#ad1457';
+    } else {
+      ctx.fillStyle = '#ad1457';
+    }
+    ctx.fillText('⏱ ' + timerStr, 12, 15);
+  }
+
+  // Difficulty badge (subtle, top-right area near pause button)
+  if (currentDifficulty !== 'normal') {
+    const badgeColors = { easy: '#4caf50', hard: '#f44336' };
+    const badgeLabels = { easy: 'Easy', hard: 'Hard' };
+    ctx.font = (tileSize * 0.2) + 'px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = badgeColors[currentDifficulty] || '#888';
+    const pauseBtnSize = tileSize * 0.55;
+    ctx.fillText(badgeLabels[currentDifficulty], W - pauseBtnSize - 20, 15);
+  }
 
   // Pause button
   const btnSize = tileSize * 0.55;
@@ -4076,7 +4178,7 @@ function drawHUD() {
   ctx.fill();
 
   // Bar fill — based on level target (3 stars = 2x target)
-  const lvlTarget = getLevelConfig(level).target;
+  const lvlTarget = applyDifficulty(getLevelConfig(level), currentDifficulty).target;
   const maxScore = lvlTarget * 2; // 3 stars at 2x target
   const starThresholds = [lvlTarget * 0.5, lvlTarget, lvlTarget * 2]; // 1, 2, 3 stars
   const fillW = Math.min(score / maxScore, 1) * barW;
@@ -4174,12 +4276,13 @@ function drawGameOver() {
     ctx.fillStyle = '#880e4f';
     ctx.font = 'bold ' + (tileSize * 0.36) + 'px sans-serif';
     yOff += tileSize * 0.32;
-    ctx.fillText('Time\'s Up!', W / 2, yOff);
+    const goMsg = getLevelConfig(level).mode === 'moves' ? 'No Moves Left!' : 'Time\'s Up!';
+    ctx.fillText(goMsg, W / 2, yOff);
     yOff += tileSize * 0.4;
   }
 
-  // Stars based on level target
-  const cfg = getLevelConfig(level);
+  // Stars based on level target (difficulty-adjusted)
+  const cfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
   const t = cfg.target;
   const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
   ctx.font = (tileSize * 0.6) + 'px serif';
@@ -4235,9 +4338,9 @@ function drawPauseOverlay() {
   ctx.fillRect(0, 0, W, H);
 
   if (showingTutorial) {
-    // Tutorial overlay — level intro card
+    // Tutorial overlay — level intro card with difficulty picker
     const panelW = W * 0.85;
-    const panelH = tileSize * 3.5;
+    const panelH = tileSize * 5.5;
     const panelX = (W - panelW) / 2;
     const panelY = H / 2 - panelH / 2;
 
@@ -4246,11 +4349,18 @@ function drawPauseOverlay() {
     ctx.fill();
 
     // Level number
+    const lvlCfg = getLevelConfig(level);
     ctx.fillStyle = '#c2185b';
     ctx.font = 'bold ' + (tileSize * 0.5) + 'px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Level ' + level, W / 2, panelY + tileSize * 0.7);
+    ctx.fillText('Level ' + level, W / 2, panelY + tileSize * 0.6);
+
+    // Mode badge (timer or moves)
+    const modeLabel = lvlCfg.mode === 'timer' ? '⏱ Timer Mode' : '🔄 Moves Mode';
+    ctx.fillStyle = '#888';
+    ctx.font = (tileSize * 0.26) + 'px sans-serif';
+    ctx.fillText(modeLabel, W / 2, panelY + tileSize * 1.05);
 
     // Intro text (word wrap)
     ctx.fillStyle = '#555';
@@ -4270,16 +4380,55 @@ function drawPauseOverlay() {
     }
     if (currentLine) lines.push(currentLine);
     const lineH = tileSize * 0.35;
-    const textStartY = panelY + tileSize * 1.3;
+    const textStartY = panelY + tileSize * 1.5;
     for (let i = 0; i < lines.length; i++) {
       ctx.fillText(lines[i], W / 2, textStartY + i * lineH);
     }
+
+    // Difficulty selector buttons
+    const diffBtnW = (panelW - 40) / 3;
+    const diffBtnH = tileSize * 0.7;
+    const diffBtnY = panelY + panelH - tileSize * 1.9;
+    const diffBtnStartX = panelX + 10;
+    const difficulties = ['easy', 'normal', 'hard'];
+    const diffLabels = ['Easy', 'Normal', 'Hard'];
+    const diffColors = ['#4caf50', '#e91e63', '#f44336'];
+    const diffBgActive = ['#e8f5e9', '#fce4ec', '#ffebee'];
+    const diffBgInactive = ['#f5f5f5', '#f5f5f5', '#f5f5f5'];
+
+    // Store button rects for click handling
+    tutorialDiffBtns = [];
+    for (let i = 0; i < 3; i++) {
+      const bx = diffBtnStartX + i * (diffBtnW + 5);
+      const isActive = currentDifficulty === difficulties[i];
+      tutorialDiffBtns.push({ x: bx, y: diffBtnY, w: diffBtnW, h: diffBtnH, diff: difficulties[i] });
+
+      drawRoundedRect(bx, diffBtnY, diffBtnW, diffBtnH, 8);
+      ctx.fillStyle = isActive ? diffBgActive[i] : diffBgInactive[i];
+      ctx.fill();
+      ctx.strokeStyle = isActive ? diffColors[i] : '#ccc';
+      ctx.lineWidth = isActive ? 2.5 : 1;
+      ctx.stroke();
+
+      ctx.fillStyle = isActive ? diffColors[i] : '#999';
+      ctx.font = (isActive ? 'bold ' : '') + (tileSize * 0.26) + 'px sans-serif';
+      ctx.fillText(diffLabels[i], bx + diffBtnW / 2, diffBtnY + diffBtnH / 2);
+    }
+
+    // Show what the selected difficulty means
+    const dcfg = applyDifficulty(lvlCfg, currentDifficulty);
+    ctx.fillStyle = '#888';
+    ctx.font = (tileSize * 0.22) + 'px sans-serif';
+    const infoStr = lvlCfg.mode === 'timer'
+      ? 'Time: ' + dcfg.time + 's — Target: ' + dcfg.target.toLocaleString()
+      : 'Moves: ' + dcfg.moves + ' — Target: ' + dcfg.target.toLocaleString();
+    ctx.fillText(infoStr, W / 2, diffBtnY + diffBtnH + tileSize * 0.35);
 
     // Tap to start
     const pulse = 0.5 + 0.3 * Math.sin(performance.now() / 500);
     ctx.fillStyle = `rgba(233, 30, 99, ${pulse})`;
     ctx.font = (tileSize * 0.24) + 'px sans-serif';
-    ctx.fillText('Tap to start!', W / 2, panelY + panelH - tileSize * 0.5);
+    ctx.fillText('Tap to start!', W / 2, panelY + panelH - tileSize * 0.35);
   } else {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold ' + (tileSize * 0.6) + 'px sans-serif';
@@ -4307,14 +4456,19 @@ function frame(now) {
     return;
   }
 
-  // Countdown timer (stop counting during level complete)
-  if (!gameOver && !locked && !levelComplete && timeLeft > 0) {
+  // Countdown timer — only for timer-based levels (stop counting during level complete)
+  if (getLevelConfig(level).mode === 'timer' && !gameOver && !locked && !levelComplete && timeLeft > 0) {
     timeLeft -= dt;
     if (timeLeft <= 0) {
       timeLeft = 0;
       gameOver = true;
       sfxGameOver();
     }
+  }
+  // Move-based game over check (when moves reach 0 and not level complete)
+  if (getLevelConfig(level).mode === 'moves' && !gameOver && !levelComplete && movesLeft <= 0 && !locked) {
+    gameOver = true;
+    sfxGameOver();
   }
 
   // Hint timer — show hint after inactivity
@@ -4796,9 +4950,15 @@ function initSplash() {
 function init() {
   setupLevel(level);
   resize();
-  // Set initial time from level config
+  // Set initial time/moves from level config (will be overridden on tutorial dismiss with difficulty)
   const cfg = getLevelConfig(level);
-  timeLeft = cfg.time;
+  if (cfg.mode === 'timer') {
+    timeLeft = cfg.time;
+    movesLeft = 0;
+  } else {
+    movesLeft = cfg.moves;
+    timeLeft = 99999;
+  }
   // Show tutorial for level 1
   if (cfg.intro) {
     showingTutorial = true;
