@@ -1,4 +1,4 @@
-const CACHE_NAME = 'love-match-v19';
+const CACHE_NAME = 'love-match-v20';
 
 const ASSETS = [
   './index.html',
