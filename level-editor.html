@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Love Match — Level Editor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+h1 { text-align: center; color: #e91e63; margin-bottom: 8px; }
+.subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 14px; }
+
+.controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+.controls button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-export { background: #4caf50; color: #fff; }
+.btn-export:hover { background: #388e3c; }
+.btn-reset { background: #ff5722; color: #fff; }
+.btn-reset:hover { background: #d84315; }
+.btn-validate { background: #2196f3; color: #fff; }
+.btn-validate:hover { background: #1565c0; }
+
+.brush-bar { display: flex; gap: 8px; justify-content: center; padding: 10px 20px; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 40; background: #1a1a2e; border-bottom: 1px solid #333; margin: 0 -20px; margin-bottom: 20px; }
+.brush-bar label { font-size: 13px; color: #aaa; }
+.brush-btn { padding: 6px 12px; border: 2px solid transparent; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; background: #333; color: #ccc; }
+.brush-btn.active { border-color: #e91e63; background: #444; color: #fff; }
+
+.arc-header { font-size: 18px; font-weight: 700; color: #e91e63; margin: 24px 0 12px; padding: 8px 12px; background: rgba(233,30,99,0.1); border-radius: 8px; border-left: 4px solid #e91e63; }
+
+.levels-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+
+.level-card { background: #222; border-radius: 10px; padding: 12px; border: 2px solid #333; transition: border-color 0.2s; }
+.level-card:hover { border-color: #e91e63; }
+.level-card.has-warning { border-color: #ff9800; }
+.level-title { font-size: 14px; font-weight: 700; color: #e91e63; margin-bottom: 4px; }
+.level-info { font-size: 11px; color: #888; margin-bottom: 8px; line-height: 1.4; }
+.level-info span { color: #aaa; }
+
+.board-grid { display: inline-grid; gap: 1px; background: #111; border-radius: 4px; overflow: hidden; margin: 0 auto; }
+.board-wrapper { text-align: center; }
+.cell { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 9px; cursor: pointer; user-select: none; transition: background 0.15s; position: relative; }
+.cell.void { background: #111; cursor: default; }
+.cell.empty { background: #2a2a3a; }
+.cell.empty:hover { background: #3a3a4a; }
+.cell.ice { background: #87ceeb; }
+.cell.crate { background: #a1887f; }
+.cell.giftbox { background: #f8bbd0; }
+.cell.parcel { background: #ffe0b2; }
+.cell.ice::after, .cell.crate::after, .cell.giftbox::after, .cell.parcel::after {
+  font-size: 14px; position: absolute;
+}
+.cell.ice::after { content: '🧊'; }
+.cell.crate::after { content: '📦'; }
+.cell.giftbox::after { content: '🎁'; }
+.cell.parcel::after { content: '💌'; }
+
+/* Fixed gem cells — background set dynamically, image via child img */
+.cell.gem-cell { background-size: cover; position: relative; }
+.cell.gem-cell img { width: 100%; height: 100%; object-fit: contain; }
+
+.warning { font-size: 11px; color: #ff9800; margin-top: 6px; font-style: italic; }
+.stats { font-size: 11px; color: #666; margin-top: 4px; }
+
+/* Per-level gem selector */
+.gem-selector { display: flex; gap: 3px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
+.gem-selector label { font-size: 10px; color: #666; margin-right: 2px; }
+.gem-toggle { width: 24px; height: 24px; border-radius: 4px; border: 2px solid #333; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; opacity: 0.3; overflow: hidden; padding: 1px; }
+.gem-toggle.active { opacity: 1; border-color: #fff; }
+.gem-toggle img { width: 100%; height: 100%; object-fit: contain; }
+
+#toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #4caf50; color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 600; display: none; z-index: 100; }
+
+#export-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 50; align-items: center; justify-content: center; }
+#export-modal.show { display: flex; }
+#export-modal .modal { background: #222; border-radius: 12px; padding: 20px; max-width: 800px; width: 90%; max-height: 80vh; overflow: auto; }
+#export-modal textarea { width: 100%; height: 400px; background: #111; color: #0f0; border: 1px solid #444; border-radius: 6px; font-family: monospace; font-size: 12px; padding: 10px; }
+#export-modal .modal-btns { display: flex; gap: 10px; margin-top: 10px; }
+
+/* Level Generator */
+.generator { background: #1e1e30; border: 2px solid #e91e63; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+.generator h2 { color: #e91e63; font-size: 18px; margin-bottom: 12px; }
+.gen-row { display: flex; gap: 20px; margin-bottom: 14px; flex-wrap: wrap; align-items: flex-start; }
+.gen-group { background: #252540; border-radius: 8px; padding: 12px; min-width: 160px; }
+.gen-group h3 { font-size: 13px; color: #e91e63; margin-bottom: 8px; }
+.gen-check { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px; }
+.gen-check input[type="checkbox"] { accent-color: #e91e63; }
+.gen-check input[type="number"] { width: 48px; background: #111; border: 1px solid #444; color: #eee; border-radius: 4px; padding: 2px 4px; font-size: 12px; text-align: center; }
+.gen-field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.gen-field label { min-width: 70px; color: #aaa; }
+.gen-field input, .gen-field select { background: #111; border: 1px solid #444; color: #eee; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+.gen-field input[type="number"] { width: 60px; text-align: center; }
+.gen-field select { min-width: 120px; }
+.gen-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; }
+.btn-generate { background: #e91e63; color: #fff; padding: 10px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.btn-generate:hover { background: #c2185b; }
+.gen-target { display: flex; gap: 10px; align-items: center; font-size: 13px; color: #aaa; }
+.gen-target select { background: #111; border: 1px solid #444; color: #eee; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+.gen-preview { margin-top: 14px; display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.gen-preview .board-grid { gap: 1px; }
+.gen-preview-info { font-size: 12px; color: #aaa; line-height: 1.6; }
+</style>
+</head>
+<body>
+<h1>Love Match — Level Editor</h1>
+<p class="subtitle">Click cells to paint obstacles. Edit all 50 levels, then export.</p>
+
+<div class="brush-bar">
+  <label>Brush:</label>
+  <button class="brush-btn active" data-brush="eraser">🚫 Eraser</button>
+  <button class="brush-btn" data-brush="void">⬛ Void</button>
+  <button class="brush-btn" data-brush="ice">🧊 Ice</button>
+  <button class="brush-btn" data-brush="crate">📦 Crate</button>
+  <button class="brush-btn" data-brush="giftbox">🎁 Gift Box</button>
+  <button class="brush-btn" data-brush="parcel">💌 Parcel</button>
+  <span style="color:#444; margin:0 4px;">|</span>
+  <label>Gems:</label>
+  <span id="gem-brushes"></span>
+</div>
+
+<div class="controls">
+  <button class="btn-validate" onclick="validateAll()">✓ Validate All</button>
+  <button class="btn-export" onclick="exportLayouts()">⬇ Export Code</button>
+  <button class="btn-reset" onclick="resetAll()">↺ Reset All to Defaults</button>
+</div>
+
+<div class="generator">
+  <h2>Level Generator</h2>
+  <div class="gen-row">
+    <div class="gen-group">
+      <h3>Board Size</h3>
+      <div class="gen-field"><label>Columns:</label><input type="number" id="gen-cols" value="8" min="4" max="10"></div>
+      <div class="gen-field"><label>Rows:</label><input type="number" id="gen-rows" value="8" min="4" max="10"></div>
+      <div class="gen-field"><label>Board %:</label><input type="number" id="gen-pct" value="100" min="50" max="100" step="5"><span style="font-size:11px;color:#666">%</span></div>
+    </div>
+    <div class="gen-group">
+      <h3>Gems</h3>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-0" checked><label for="gen-gem-0">Gem 1</label></div>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-1" checked><label for="gen-gem-1">Gem 2</label></div>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-2" checked><label for="gen-gem-2">Gem 3</label></div>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-3" checked><label for="gen-gem-3">Gem 4</label></div>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-4"><label for="gen-gem-4">Gem 5</label></div>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-5"><label for="gen-gem-5">Gem 6</label></div>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-6"><label for="gen-gem-6">Gem 7</label></div>
+      <div class="gen-check"><input type="checkbox" id="gen-gem-7"><label for="gen-gem-7">Gem 8</label></div>
+    </div>
+    <div class="gen-group">
+      <h3>Obstacles</h3>
+      <div class="gen-check"><input type="checkbox" id="gen-obs-ice"><label for="gen-obs-ice">🧊 Ice</label><input type="number" id="gen-obs-ice-qty" value="0" min="0" max="30"></div>
+      <div class="gen-check"><input type="checkbox" id="gen-obs-crate"><label for="gen-obs-crate">📦 Crate</label><input type="number" id="gen-obs-crate-qty" value="0" min="0" max="30"></div>
+      <div class="gen-check"><input type="checkbox" id="gen-obs-giftbox"><label for="gen-obs-giftbox">🎁 Gift Box</label><input type="number" id="gen-obs-giftbox-qty" value="0" min="0" max="30"></div>
+      <div class="gen-check"><input type="checkbox" id="gen-obs-parcel"><label for="gen-obs-parcel">💌 Parcel</label><input type="number" id="gen-obs-parcel-qty" value="0" min="0" max="30"></div>
+    </div>
+    <div class="gen-group">
+      <h3>Placement Strategy</h3>
+      <div class="gen-field"><label>Pattern:</label>
+        <select id="gen-pattern">
+          <option value="edges">Along edges</option>
+          <option value="center">Center cluster</option>
+          <option value="h-stripe">Horizontal stripe(s)</option>
+          <option value="v-stripe">Vertical stripe(s)</option>
+          <option value="border">Border ring</option>
+          <option value="corners">Corner groups</option>
+          <option value="scatter">Light scatter (2-3 only)</option>
+          <option value="random">Random</option>
+        </select>
+      </div>
+      <div class="gen-field"><label>Mode:</label>
+        <select id="gen-mode">
+          <option value="timer">Timer</option>
+          <option value="moves">Moves</option>
+        </select>
+      </div>
+      <div class="gen-field"><label>Target:</label><input type="number" id="gen-target" value="10000" min="500" max="100000" step="500"></div>
+      <div class="gen-field"><label>Time (s):</label><input type="number" id="gen-time" value="90" min="30" max="600"></div>
+      <div class="gen-field"><label>Moves:</label><input type="number" id="gen-moves" value="30" min="5" max="100"></div>
+    </div>
+  </div>
+  <div class="gen-actions">
+    <button class="btn-generate" onclick="generateLevel()">Generate Level</button>
+    <div class="gen-target">
+      <label>Apply to level:</label>
+      <select id="gen-apply-target">
+        <option value="preview">Preview only</option>
+        <optgroup label="Apply to level">
+        </optgroup>
+      </select>
+    </div>
+    <button class="btn-export" onclick="applyGenerated()" style="font-size:12px; padding:6px 12px;">Apply to Level</button>
+  </div>
+  <div class="gen-preview" id="gen-preview"></div>
+</div>
+
+<div id="levels-container"></div>
+
+<div id="toast"></div>
+<div id="export-modal">
+  <div class="modal">
+    <h3 style="margin-bottom:10px; color:#e91e63;">Exported Obstacle Layouts</h3>
+    <p style="font-size:12px; color:#888; margin-bottom:10px;">Copy this and paste it into match.html replacing the OBSTACLE_LAYOUTS constant.</p>
+    <textarea id="export-text" readonly></textarea>
+    <div class="modal-btns">
+      <button class="btn-export" onclick="copyExport()">📋 Copy</button>
+      <button class="btn-reset" onclick="closeExport()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Gem sprites (mirrored from match.html) ──
+const ALL_GEMS = [
+  { id: 's1-heart', file: 'icons/tile-heart.png', name: 'Crystal Heart', bg1: '#ff4d6d', bg2: '#e63950' },
+  { id: 's1-rose', file: 'icons/tile-rose.png', name: 'Red Rose', bg1: '#ff6b8a', bg2: '#e0446b' },
+  { id: 's1-bow', file: 'icons/tile-bow.png', name: 'Purple Bow', bg1: '#c8a2e8', bg2: '#b68ad8' },
+  { id: 's1-envelope', file: 'icons/tile-envelope.png', name: 'Love Letter', bg1: '#f5deb3', bg2: '#e8d099' },
+  { id: 's1-paw', file: 'icons/tile-paw.png', name: 'Paw Medal', bg1: '#ffb6c1', bg2: '#ff9aaf' },
+  { id: 's1-gift', file: 'icons/tile-gift.png', name: 'Heart Gift Box', bg1: '#e040a0', bg2: '#c83090' },
+  { id: 's2-1', file: 'icons/sheet2-icon-1.png', name: 'Green Paw Prints', bg1: '#90ee90', bg2: '#6ddb6d' },
+  { id: 's2-3', file: 'icons/sheet2-icon-3.png', name: 'Flower Bouquet', bg1: '#dda0dd', bg2: '#cc88cc' },
+  { id: 's2-5', file: 'icons/sheet2-icon-5.png', name: 'Blue Cupcake', bg1: '#87ceeb', bg2: '#6db8d9' },
+  { id: 's2-8', file: 'icons/sheet2-icon-8.png', name: 'Yarn Ball', bg1: '#9999ff', bg2: '#7777ee' },
+  { id: 's2-9', file: 'icons/sheet2-icon-9.png', name: 'Kitten with Yarn', bg1: '#ffe4b5', bg2: '#f0d4a0' },
+  { id: 's2-10', file: 'icons/sheet2-icon-10.png', name: 'Mouse', bg1: '#d3d3d3', bg2: '#bbb' },
+  { id: 's2-13', file: 'icons/sheet2-icon-13.png', name: 'Cat Collar', bg1: '#cd5c5c', bg2: '#b84848' },
+  { id: 's2-15', file: 'icons/sheet2-icon-15.png', name: 'Kittens in Box', bg1: '#deb887', bg2: '#c9a46e' },
+  { id: 's3-3', file: 'icons/sheet3-icon-3.png', name: 'Heart Cupcake', bg1: '#ffb6c1', bg2: '#ff9aaf' },
+  { id: 's3-5', file: 'icons/sheet3-icon-5.png', name: 'Rose Bouquet', bg1: '#ff7f7f', bg2: '#e66a6a' },
+  { id: 's3-7', file: 'icons/sheet3-icon-7.png', name: 'Ring Box', bg1: '#ff4444', bg2: '#cc3333' },
+  { id: 's3-10', file: 'icons/sheet3-icon-10.png', name: 'Cake Slice', bg1: '#d2691e', bg2: '#b8551a' },
+  { id: 's4-1', file: 'icons/sheet4-icon-1.png', name: 'Love Letter', bg1: '#ffb6c1', bg2: '#ff9aaf' },
+  { id: 's4-4', file: 'icons/sheet4-icon-4.png', name: 'Gift Box', bg1: '#daa520', bg2: '#c49318' },
+  { id: 's4-6', file: 'icons/sheet4-icon-6.png', name: 'Kissing Kittens', bg1: '#f0e0e0', bg2: '#ddd0d0' },
+  { id: 's5-1', file: 'icons/sheet5-icon-1.png', name: 'Gold Coin', bg1: '#ffd700', bg2: '#f0c000' },
+  { id: 's5-2', file: 'icons/sheet5-icon-2.png', name: 'Candy', bg1: '#ff6b6b', bg2: '#e65555' },
+  { id: 's5-6', file: 'icons/sheet5-icon-6.png', name: 'Diamond', bg1: '#87ceeb', bg2: '#6db8d9' },
+  { id: 's5-11', file: 'icons/sheet5-icon-11.png', name: 'Pink Gift', bg1: '#ff69b4', bg2: '#e0559e' },
+  { id: 's5-16', file: 'icons/sheet5-icon-16.png', name: 'Bell', bg1: '#ffd700', bg2: '#f0c000' },
+  { id: 's5-18', file: 'icons/sheet5-icon-18.png', name: 'Treasure Map', bg1: '#deb887', bg2: '#c9a46e' },
+];
+
+// Deterministic shuffle matching match.html's MASTER_GEM_ORDER
+const MASTER_GEM_ORDER = (() => {
+  const shuffled = [...ALL_GEMS];
+  let seed = 42 * 2654435761;
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const j = seed % (i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+})();
+
+// ── Level definitions (mirrored from match.html) ──
+const LEVEL_PROGRESSION = [
+  { gems:3,cols:5,rows:5,boardPct:1.0,time:60,target:900, intro:'Match 3 in a row to clear tiles and score points!' },
+  { gems:3,cols:6,rows:5,boardPct:1.0,time:70,target:1500, intro:'Match 4 in a row to create a Lightning Bolt!' },
+  { gems:4,cols:6,rows:6,boardPct:1.0,time:75,target:2400, intro:'Match a 2×2 square to create a Potion!' },
+  { gems:4,cols:6,rows:6,boardPct:1.0,time:80,target:3000, intro:'Match an L or T shape to create a Bomb!' },
+  { gems:4,cols:7,rows:6,boardPct:1.0,time:80,target:3600, intro:'Match 5 in a row for a Rainbow Star!' },
+  { gems:5,cols:7,rows:7,boardPct:1.0,time:85,target:4500, intro:'Obstacles block your path!' },
+  { gems:5,cols:7,rows:7,boardPct:0.85,time:85,target:5400, intro:'Magic Wand!' },
+  { gems:5,cols:8,rows:7,boardPct:1.0,time:85,target:6000, intro:'Magnet!' },
+  { gems:6,cols:8,rows:8,boardPct:0.85,time:90,target:7500, intro:'Pink Cloud!' },
+  { gems:6,cols:8,rows:8,boardPct:0.90,time:90,target:9000, intro:'Treasure Chest!' },
+  { gems:6,cols:8,rows:8,boardPct:1.0,time:85,target:10500, intro:'Stopwatch!' },
+  { gems:6,cols:8,rows:8,boardPct:0.80,time:80,target:11400, intro:'Tricky shape!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:85,target:12600, intro:'Slingshot!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:85,target:14400, intro:'More obstacles!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:90,target:16500, intro:'Love Letter tool!' },
+  { gems:7,cols:8,rows:8,boardPct:0.90,time:75,target:18000, intro:'Less time!' },
+  { gems:7,cols:8,rows:8,boardPct:0.80,time:80,target:19500, intro:'Cross board!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:85,target:22500, intro:'Match master!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:75,target:25500, intro:'Diamond board!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:90,target:30000, intro:'Ultimate challenge!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:200,moves:48,target:18000, obstacleCount:8,obstacleTypes:['ice'], intro:'Frozen Love begins!' },
+  { gems:8,cols:8,rows:8,boardPct:0.80,time:210,moves:50,target:22000, obstacleCount:11,obstacleTypes:['ice'], intro:'Frost deepens!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:220,moves:52,target:26000, obstacleCount:14,obstacleTypes:['ice'], intro:'Ice Queen\'s final stand!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:210,moves:50,target:20000, obstacleCount:10,obstacleTypes:['crate'], intro:'Crate Breaker!' },
+  { gems:6,cols:8,rows:8,boardPct:1.0,time:220,moves:52,target:24000, obstacleCount:12,obstacleTypes:['crate'], intro:'Even more crates!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:230,moves:55,target:28000, obstacleCount:15,obstacleTypes:['crate'], intro:'Warehouse packed!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:210,moves:50,target:22000, obstacleCount:8,obstacleTypes:['parcel','giftbox'], intro:'Love Letters!' },
+  { gems:7,cols:8,rows:8,boardPct:0.90,time:220,moves:52,target:26000, obstacleCount:10,obstacleTypes:['parcel','giftbox'], intro:'More love letters!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:230,moves:55,target:30000, obstacleCount:12,obstacleTypes:['parcel','giftbox'], intro:'Mailroom overflows!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:230,moves:52,target:24000, obstacleCount:10,obstacleTypes:['giftbox'], intro:'Gift Wrapped!' },
+  { gems:7,cols:8,rows:8,boardPct:0.90,time:240,moves:55,target:28000, obstacleCount:12,obstacleTypes:['giftbox'], intro:'So many presents!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:250,moves:58,target:33000, obstacleCount:14,obstacleTypes:['giftbox'], intro:'Gift explosion!' },
+  { gems:7,cols:8,rows:8,boardPct:0.80,time:200,moves:45,target:26000, obstacleCount:12,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'The Gauntlet!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:210,moves:48,target:30000, obstacleCount:14,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'Gauntlet intensifies!' },
+  { gems:7,cols:8,rows:8,boardPct:0.80,time:220,moves:50,target:35000, obstacleCount:16,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'Final Gauntlet!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:120,moves:55,target:28000, mode:'timer',obstacleCount:4,obstacleTypes:['ice','crate'], intro:'Speed Dating!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:135,moves:55,target:32000, mode:'timer',obstacleCount:5,obstacleTypes:['ice','crate'], intro:'Clock ticking!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:150,moves:55,target:37000, mode:'timer',obstacleCount:6,obstacleTypes:['ice','crate','giftbox'], intro:'Final speed round!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:240,moves:30,target:25000, mode:'moves',obstacleCount:6,obstacleTypes:['ice','giftbox'], intro:'Careful Moves!' },
+  { gems:7,cols:8,rows:8,boardPct:0.90,time:240,moves:32,target:30000, mode:'moves',obstacleCount:8,obstacleTypes:['ice','crate','giftbox'], intro:'Every move counts!' },
+  { gems:7,cols:8,rows:8,boardPct:1.0,time:240,moves:35,target:35000, mode:'moves',obstacleCount:10,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'Ultimate puzzle!' },
+  { gems:5,cols:6,rows:6,boardPct:1.0,time:250,moves:55,target:15000, obstacleCount:6,obstacleTypes:['ice','crate'], intro:'Tiny Board!' },
+  { gems:6,cols:5,rows:5,boardPct:1.0,time:260,moves:58,target:18000, obstacleCount:8,obstacleTypes:['ice','crate','giftbox'], intro:'Even tinier!' },
+  { gems:6,cols:6,rows:6,boardPct:1.0,time:270,moves:60,target:22000, obstacleCount:10,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'Tiniest challenge!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:250,moves:55,target:30000, obstacleCount:14,obstacleTypes:['ice','crate'], intro:'Ice Fortress!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:260,moves:58,target:35000, obstacleCount:16,obstacleTypes:['ice','crate'], intro:'Fortress grows!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:270,moves:60,target:40000, obstacleCount:18,obstacleTypes:['ice','crate'], intro:'Final fortress!' },
+  { gems:7,cols:8,rows:8,boardPct:0.80,time:260,moves:58,target:35000, obstacleCount:15,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'Ultimate Love!' },
+  { gems:7,cols:8,rows:8,boardPct:0.85,time:270,moves:60,target:42000, obstacleCount:16,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'Penultimate!' },
+  { gems:7,cols:8,rows:8,boardPct:0.80,time:280,moves:62,target:50000, obstacleCount:18,obstacleTypes:['ice','crate','giftbox','parcel'], intro:'GRAND FINALE!' },
+];
+
+const ARC_NAMES = [
+  { start: 1, end: 5, name: 'Tutorial Arc' },
+  { start: 6, end: 10, name: 'Growth Arc' },
+  { start: 11, end: 15, name: 'Challenge Arc' },
+  { start: 16, end: 20, name: 'Mastery Arc' },
+  { start: 21, end: 23, name: 'Frozen Love' },
+  { start: 24, end: 26, name: 'Crate Breaker' },
+  { start: 27, end: 29, name: 'Love Letters' },
+  { start: 30, end: 32, name: 'Gift Wrapped' },
+  { start: 33, end: 35, name: 'The Gauntlet' },
+  { start: 36, end: 38, name: 'Speed Dating' },
+  { start: 39, end: 41, name: 'Careful Moves' },
+  { start: 42, end: 44, name: 'Tiny Boards' },
+  { start: 45, end: 47, name: 'Ice Fortress' },
+  { start: 48, end: 50, name: 'Ultimate Love' },
+];
+
+// ── Board mask generation (mirrored from match.html) ──
+function generateBoardMask(lvl, rows, cols, pct) {
+  const mask = [];
+  if (pct >= 1.0) {
+    for (let r = 0; r < rows; r++) {
+      mask[r] = [];
+      for (let c = 0; c < cols; c++) mask[r][c] = true;
+    }
+    return mask;
+  }
+  const cr = (rows - 1) / 2;
+  const cc = (cols - 1) / 2;
+  const shapeType = lvl % 3;
+  const totalCells = rows * cols;
+  const targetActive = Math.round(totalCells * pct);
+
+  for (let r = 0; r < rows; r++) {
+    mask[r] = [];
+    for (let c = 0; c < cols; c++) mask[r][c] = false;
+  }
+
+  if (shapeType === 0) {
+    let bestRadius = 1;
+    for (let rad = 1; rad <= rows + cols; rad += 0.5) {
+      let count = 0;
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (Math.abs(r - cr) + Math.abs(c - cc) <= rad) count++;
+      if (count <= targetActive) bestRadius = rad;
+      else break;
+    }
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        mask[r][c] = Math.abs(r - cr) + Math.abs(c - cc) <= bestRadius;
+  } else if (shapeType === 1) {
+    let bestCut = 0;
+    for (let cut = 0.5; cut <= Math.max(rows, cols); cut += 0.5) {
+      let count = 0;
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (Math.abs(r - cr) + Math.abs(c - cc) <= (cr + cc) - cut + 0.5) count++;
+      if (count >= targetActive) { bestCut = cut; break; }
+    }
+    const maxDist = (cr + cc) - bestCut + 0.5;
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        mask[r][c] = Math.abs(r - cr) + Math.abs(c - cc) <= maxDist;
+  } else {
+    const armW = Math.max(2, Math.round(cols * 0.4));
+    const armH = Math.max(2, Math.round(rows * 0.4));
+    const hPad = Math.floor((cols - armW) / 2);
+    const vPad = Math.floor((rows - armH) / 2);
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        mask[r][c] = (c >= hPad && c < cols - hPad) || (r >= vPad && r < rows - vPad);
+    let count = 0;
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++)
+        if (mask[r][c]) count++;
+    if (count > targetActive * 1.15) {
+      const cells = [];
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          if (mask[r][c]) cells.push({ r, c, dist: Math.abs(r - cr) + Math.abs(c - cc) });
+      cells.sort((a, b) => b.dist - a.dist);
+      let toRemove = count - targetActive;
+      for (let i = 0; i < toRemove && i < cells.length; i++)
+        mask[cells[i].r][cells[i].c] = false;
+    }
+  }
+  return mask;
+}
+
+// ── Strategic obstacle placement patterns ──
+function generateStrategicLayout(lvl, rows, cols, mask, count, types) {
+  const obstacles = [];
+  for (let r = 0; r < rows; r++) {
+    obstacles[r] = [];
+    for (let c = 0; c < cols; c++) obstacles[r][c] = null;
+  }
+  if (!count || count === 0) return obstacles;
+
+  // Collect valid cells (skip edges for most patterns)
+  const validCells = [];
+  const edgeCells = [];
+  const centerCells = [];
+  const cr = (rows - 1) / 2;
+  const cc = (cols - 1) / 2;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!mask[r] || !mask[r][c]) continue;
+      const isEdge = (r === 0 || r === rows-1 || c === 0 || c === cols-1);
+      // Check if adjacent to void
+      const adjVoid = (r > 0 && mask[r-1] && !mask[r-1][c]) ||
+                      (r < rows-1 && mask[r+1] && !mask[r+1][c]) ||
+                      (c > 0 && !mask[r][c-1]) ||
+                      (c < cols-1 && !mask[r][c+1]);
+      const distCenter = Math.abs(r - cr) + Math.abs(c - cc);
+      const cell = { r, c, distCenter, isEdge: isEdge || adjVoid };
+      validCells.push(cell);
+      if (isEdge || adjVoid) edgeCells.push(cell);
+      else centerCells.push(cell);
+    }
+  }
+
+  // Choose a pattern based on level and count
+  const patternSeed = lvl * 7 + count * 3;
+  let placed = 0;
+
+  if (count <= 3) {
+    // Few obstacles: place randomly but spread out
+    const shuffled = [...validCells].filter(c => !c.isEdge);
+    if (shuffled.length < count) shuffled.push(...edgeCells);
+    shuffled.sort((a, b) => a.distCenter - b.distCenter);
+    // Pick spread-out cells near center
+    const step = Math.max(1, Math.floor(shuffled.length / count));
+    for (let i = 0; i < count && i * step < shuffled.length; i++) {
+      const cell = shuffled[i * step];
+      obstacles[cell.r][cell.c] = { type: types[i % types.length] };
+      placed++;
+    }
+  } else if (count <= 6) {
+    // Medium: edges or center cluster
+    if (patternSeed % 3 === 0) {
+      // Top and bottom edge stripe
+      const topRow = mask[0] ? 0 : 1;
+      const botRow = mask[rows-1] ? rows-1 : rows-2;
+      let idx = 0;
+      const half = Math.ceil(count / 2);
+      for (let c = 0; c < cols && idx < half; c++) {
+        if (mask[topRow] && mask[topRow][c]) {
+          obstacles[topRow][c] = { type: types[idx % types.length] };
+          idx++; placed++;
+        }
+      }
+      for (let c = 0; c < cols && placed < count; c++) {
+        if (mask[botRow] && mask[botRow][c]) {
+          obstacles[botRow][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+    } else if (patternSeed % 3 === 1) {
+      // Center cluster
+      centerCells.sort((a, b) => a.distCenter - b.distCenter);
+      for (let i = 0; i < count && i < centerCells.length; i++) {
+        const cell = centerCells[i];
+        obstacles[cell.r][cell.c] = { type: types[i % types.length] };
+        placed++;
+      }
+    } else {
+      // Left and right edge columns
+      let idx = 0;
+      for (let r = 1; r < rows - 1 && placed < count; r++) {
+        if (mask[r] && mask[r][0]) {
+          obstacles[r][0] = { type: types[placed % types.length] };
+          placed++;
+        }
+        if (placed < count && mask[r] && mask[r][cols-1]) {
+          obstacles[r][cols-1] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+    }
+  } else if (count <= 10) {
+    // Larger: solid stripe or border ring
+    if (patternSeed % 4 === 0) {
+      // Horizontal stripe across middle
+      const midR = Math.floor(rows / 2);
+      for (let c = 0; c < cols && placed < count; c++) {
+        if (mask[midR] && mask[midR][c]) {
+          obstacles[midR][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      // If more needed, add row above
+      if (placed < count) {
+        for (let c = 0; c < cols && placed < count; c++) {
+          if (mask[midR-1] && mask[midR-1][c] && !obstacles[midR-1][c]) {
+            obstacles[midR-1][c] = { type: types[placed % types.length] };
+            placed++;
+          }
+        }
+      }
+    } else if (patternSeed % 4 === 1) {
+      // Vertical stripe down center
+      const midC = Math.floor(cols / 2);
+      for (let r = 0; r < rows && placed < count; r++) {
+        if (mask[r] && mask[r][midC]) {
+          obstacles[r][midC] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      if (placed < count) {
+        for (let r = 0; r < rows && placed < count; r++) {
+          if (mask[r] && mask[r][midC-1] && !obstacles[r][midC-1]) {
+            obstacles[r][midC-1] = { type: types[placed % types.length] };
+            placed++;
+          }
+        }
+      }
+    } else if (patternSeed % 4 === 2) {
+      // Border ring (top + bottom edges)
+      for (let c = 0; c < cols && placed < count; c++) {
+        if (mask[0] && mask[0][c]) {
+          obstacles[0][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      for (let c = 0; c < cols && placed < count; c++) {
+        if (mask[rows-1] && mask[rows-1][c]) {
+          obstacles[rows-1][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+    } else {
+      // Center 2x2 or 3x3 block + edge corners
+      const sr = Math.floor(cr) - 1;
+      const sc = Math.floor(cc) - 1;
+      for (let r = sr; r <= sr + 2 && placed < count; r++) {
+        for (let c = sc; c <= sc + 2 && placed < count; c++) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols && mask[r] && mask[r][c]) {
+            obstacles[r][c] = { type: types[placed % types.length] };
+            placed++;
+          }
+        }
+      }
+    }
+  } else {
+    // Many obstacles (11+): combine edges + center block or full stripes
+    if (patternSeed % 3 === 0) {
+      // Top edge + bottom edge + center cluster
+      const topR = 0, botR = rows - 1;
+      for (let c = 0; c < cols && placed < Math.floor(count * 0.35); c++) {
+        if (mask[topR] && mask[topR][c]) {
+          obstacles[topR][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      for (let c = 0; c < cols && placed < Math.floor(count * 0.65); c++) {
+        if (mask[botR] && mask[botR][c]) {
+          obstacles[botR][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      centerCells.sort((a, b) => a.distCenter - b.distCenter);
+      for (let i = 0; placed < count && i < centerCells.length; i++) {
+        const cell = centerCells[i];
+        if (!obstacles[cell.r][cell.c]) {
+          obstacles[cell.r][cell.c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+    } else if (patternSeed % 3 === 1) {
+      // Two horizontal stripes
+      const r1 = Math.floor(rows * 0.3);
+      const r2 = Math.floor(rows * 0.7);
+      for (let c = 0; c < cols && placed < Math.ceil(count / 2); c++) {
+        if (mask[r1] && mask[r1][c]) {
+          obstacles[r1][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      for (let c = 0; c < cols && placed < count; c++) {
+        if (mask[r2] && mask[r2][c]) {
+          obstacles[r2][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      // Fill remaining from edges
+      for (let r = 0; r < rows && placed < count; r++) {
+        for (let c = 0; c < cols && placed < count; c++) {
+          if (mask[r] && mask[r][c] && !obstacles[r][c] && (r === 0 || r === rows-1)) {
+            obstacles[r][c] = { type: types[placed % types.length] };
+            placed++;
+          }
+        }
+      }
+    } else {
+      // Left/right columns + center column
+      const midC = Math.floor(cols / 2);
+      for (let r = 0; r < rows && placed < Math.floor(count * 0.33); r++) {
+        if (mask[r] && mask[r][0]) {
+          obstacles[r][0] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      for (let r = 0; r < rows && placed < Math.floor(count * 0.66); r++) {
+        if (mask[r] && mask[r][cols-1]) {
+          obstacles[r][cols-1] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+      for (let r = 0; r < rows && placed < count; r++) {
+        if (mask[r] && mask[r][midC] && !obstacles[r][midC]) {
+          obstacles[r][midC] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+    }
+  }
+
+  // Fallback: if we couldn't place all, fill from edges
+  if (placed < count) {
+    for (let r = 0; r < rows && placed < count; r++) {
+      for (let c = 0; c < cols && placed < count; c++) {
+        if (mask[r] && mask[r][c] && !obstacles[r][c]) {
+          obstacles[r][c] = { type: types[placed % types.length] };
+          placed++;
+        }
+      }
+    }
+  }
+
+  return obstacles;
+}
+
+// ── State ──
+let currentBrush = 'eraser';
+
+// Helper: apply gem sprite to a cell element
+function applyGemCell(cell, gemIdx) {
+  const gem = MASTER_GEM_ORDER[gemIdx];
+  cell.classList.add('gem-cell');
+  cell.style.background = gem.bg1;
+  cell.innerHTML = `<img src="${gem.file}" alt="${gem.name}" draggable="false">`;
+}
+
+// Build gem brush buttons dynamically from MASTER_GEM_ORDER
+function buildGemBrushes() {
+  const container = document.getElementById('gem-brushes');
+  for (let g = 0; g < 8; g++) {
+    const gem = MASTER_GEM_ORDER[g];
+    const btn = document.createElement('button');
+    btn.className = 'brush-btn';
+    btn.dataset.brush = 'gem' + g;
+    btn.style.background = gem.bg1;
+    btn.style.padding = '3px 6px';
+    btn.style.display = 'inline-flex';
+    btn.style.alignItems = 'center';
+    btn.style.gap = '3px';
+    btn.innerHTML = `<img src="${gem.file}" style="width:18px;height:18px;object-fit:contain;" alt="${gem.name}">`;
+    btn.title = gem.name;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.brush-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentBrush = btn.dataset.brush;
+    });
+    container.appendChild(btn);
+  }
+}
+let levelData = []; // { lvl, rows, cols, mask, obstacles, cfg }
+let mouseDown = false;
+
+document.addEventListener('mousedown', () => mouseDown = true);
+document.addEventListener('mouseup', () => mouseDown = false);
+
+// ── Brush bar ──
+document.querySelectorAll('.brush-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.brush-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentBrush = btn.dataset.brush;
+  });
+});
+
+// ── Initialize all levels ──
+function init() {
+  const container = document.getElementById('levels-container');
+  container.innerHTML = '';
+
+  let currentArcIdx = 0;
+
+  for (let lvl = 1; lvl <= 50; lvl++) {
+    // Arc header
+    if (currentArcIdx < ARC_NAMES.length && lvl === ARC_NAMES[currentArcIdx].start) {
+      const arc = ARC_NAMES[currentArcIdx];
+      const header = document.createElement('div');
+      header.className = 'arc-header';
+      header.textContent = `${arc.name} (Levels ${arc.start}–${arc.end})`;
+      container.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'levels-grid';
+      grid.id = `arc-${currentArcIdx}`;
+      container.appendChild(grid);
+      currentArcIdx++;
+    }
+
+    const idx = lvl - 1;
+    const cfg = LEVEL_PROGRESSION[idx];
+    const rows = cfg.rows;
+    const cols = cfg.cols;
+    const mask = generateBoardMask(lvl, rows, cols, cfg.boardPct);
+
+    const obstacleCount = cfg.obstacleCount || (lvl >= 6 ? Math.min(2 + Math.floor((lvl - 5) / 2), 12) : 0);
+    let obstacleTypes;
+    if (cfg.obstacleTypes) {
+      obstacleTypes = cfg.obstacleTypes;
+    } else if (lvl <= 8) {
+      obstacleTypes = ['crate'];
+    } else if (lvl <= 12) {
+      obstacleTypes = ['crate', 'ice'];
+    } else if (lvl <= 16) {
+      obstacleTypes = ['crate', 'ice', 'giftbox'];
+    } else {
+      obstacleTypes = ['crate', 'ice', 'giftbox', 'parcel'];
+    }
+
+    const obstacles = generateStrategicLayout(lvl, rows, cols, mask, obstacleCount, obstacleTypes);
+
+    // Fixed gems grid (null = random, 0-7 = specific gem)
+    const fixedGems = [];
+    for (let r = 0; r < rows; r++) {
+      fixedGems[r] = [];
+      for (let c = 0; c < cols; c++) fixedGems[r][c] = null;
+    }
+
+    // Active gems for this level (which gem types can randomly populate)
+    const activeGems = [];
+    for (let i = 0; i < cfg.gems; i++) activeGems.push(i);
+
+    levelData[lvl] = { lvl, rows, cols, mask, obstacles, cfg, obstacleCount, obstacleTypes, fixedGems, activeGems };
+
+    const arcGrid = container.querySelector(`#arc-${currentArcIdx - 1}`);
+    const card = createLevelCard(lvl);
+    arcGrid.appendChild(card);
+  }
+}
+
+function createLevelCard(lvl) {
+  const ld = levelData[lvl];
+  const { rows, cols, mask, obstacles, cfg, obstacleCount, obstacleTypes } = ld;
+
+  const card = document.createElement('div');
+  card.className = 'level-card';
+  card.id = `card-${lvl}`;
+
+  const modeStr = cfg.mode || (lvl % 2 === 1 ? 'timer' : 'moves');
+  const typesStr = obstacleTypes ? obstacleTypes.join(', ') : 'none';
+  const activeCells = mask.flat().filter(Boolean).length;
+
+  // Build gem selector HTML
+  let gemSelHtml = '<div class="gem-selector"><label>Gems:</label>';
+  for (let g = 0; g < 8; g++) {
+    const gem = MASTER_GEM_ORDER[g];
+    const isActive = ld.activeGems.includes(g);
+    gemSelHtml += `<div class="gem-toggle ${isActive ? 'active' : ''}" data-gem="${g}" data-lvl="${lvl}" title="${gem.name}" style="background:${gem.bg1};"><img src="${gem.file}" alt="${gem.name}"></div>`;
+  }
+  gemSelHtml += '</div>';
+
+  card.innerHTML = `
+    <div class="level-title">Level ${lvl}</div>
+    <div class="level-info">
+      <span>${cols}×${rows}</span> · <span>${modeStr}</span> · Target: <span>${cfg.target.toLocaleString()}</span><br>
+      Obstacles: <span>${obstacleCount}</span> (${typesStr}) · Board: <span>${activeCells}/${rows*cols}</span> cells
+    </div>
+    ${gemSelHtml}
+    <div class="board-wrapper" id="board-${lvl}"></div>
+    <div class="stats" id="stats-${lvl}"></div>
+  `;
+
+  // Wire up gem toggle clicks
+  card.querySelectorAll('.gem-toggle').forEach(tog => {
+    tog.addEventListener('click', () => {
+      const gemIdx = parseInt(tog.dataset.gem);
+      const lv = parseInt(tog.dataset.lvl);
+      const ld2 = levelData[lv];
+      const idx = ld2.activeGems.indexOf(gemIdx);
+      if (idx >= 0) {
+        if (ld2.activeGems.length <= 3) { showToast('Need at least 3 gem types'); return; }
+        ld2.activeGems.splice(idx, 1);
+        tog.classList.remove('active');
+      } else {
+        ld2.activeGems.push(gemIdx);
+        ld2.activeGems.sort((a,b) => a - b);
+        tog.classList.add('active');
+      }
+    });
+  });
+
+  // Build board grid
+  const boardEl = card.querySelector(`#board-${lvl}`);
+  const gridEl = document.createElement('div');
+  gridEl.className = 'board-grid';
+  gridEl.style.gridTemplateColumns = `repeat(${cols}, 24px)`;
+  gridEl.style.gridTemplateRows = `repeat(${rows}, 24px)`;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.lvl = lvl;
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+
+      if (!mask[r] || !mask[r][c]) {
+        cell.classList.add('void');
+      } else if (obstacles[r] && obstacles[r][c]) {
+        cell.classList.add(obstacles[r][c].type);
+      } else if (ld.fixedGems[r] && ld.fixedGems[r][c] !== null && ld.fixedGems[r][c] !== undefined) {
+        applyGemCell(cell, ld.fixedGems[r][c]);
+      } else {
+        cell.classList.add('empty');
+      }
+
+      cell.addEventListener('mousedown', (e) => { e.preventDefault(); paintCell(lvl, r, c); });
+      cell.addEventListener('mouseenter', () => { if (mouseDown) paintCell(lvl, r, c); });
+
+      gridEl.appendChild(cell);
+    }
+  }
+
+  boardEl.appendChild(gridEl);
+
+  // Update stats inline (card not in DOM yet)
+  let obsCount = 0;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (obstacles[r] && obstacles[r][c]) obsCount++;
+  const statsEl = card.querySelector(`#stats-${lvl}`);
+  const diff = obsCount - obstacleCount;
+  const diffStr = diff === 0 ? '' : ` (${diff > 0 ? '+' : ''}${diff} from target ${obstacleCount})`;
+  statsEl.textContent = `Placed: ${obsCount}${diffStr}`;
+  if (diff !== 0) statsEl.style.color = '#ff9800';
+
+  return card;
+}
+
+function paintCell(lvl, r, c) {
+  const ld = levelData[lvl];
+
+  if (currentBrush === 'void') {
+    ld.mask[r][c] = false;
+    ld.obstacles[r][c] = null;
+    ld.fixedGems[r][c] = null;
+  } else if (currentBrush === 'eraser') {
+    if (!ld.mask[r] || !ld.mask[r][c]) {
+      ld.mask[r][c] = true;
+    }
+    ld.obstacles[r][c] = null;
+    ld.fixedGems[r][c] = null;
+  } else if (currentBrush.startsWith('gem')) {
+    if (!ld.mask[r] || !ld.mask[r][c]) return;
+    const gemIdx = parseInt(currentBrush.replace('gem', ''));
+    ld.obstacles[r][c] = null; // gems and obstacles don't overlap
+    ld.fixedGems[r][c] = gemIdx;
+  } else {
+    if (!ld.mask[r] || !ld.mask[r][c]) return;
+    ld.obstacles[r][c] = { type: currentBrush };
+    ld.fixedGems[r][c] = null; // obstacles and gems don't overlap
+  }
+
+  // Update the cell visually
+  const cell = document.querySelector(`[data-lvl="${lvl}"][data-r="${r}"][data-c="${c}"]`);
+  cell.className = 'cell';
+  cell.innerHTML = '';
+  cell.style.background = '';
+  if (!ld.mask[r][c]) {
+    cell.classList.add('void');
+  } else if (ld.obstacles[r][c]) {
+    cell.classList.add(ld.obstacles[r][c].type);
+  } else if (ld.fixedGems[r][c] !== null && ld.fixedGems[r][c] !== undefined) {
+    applyGemCell(cell, ld.fixedGems[r][c]);
+  } else {
+    cell.classList.add('empty');
+  }
+  updateStats(lvl);
+}
+
+function updateStats(lvl) {
+  const ld = levelData[lvl];
+  let count = 0;
+  for (let r = 0; r < ld.rows; r++)
+    for (let c = 0; c < ld.cols; c++)
+      if (ld.obstacles[r] && ld.obstacles[r][c]) count++;
+
+  const statsEl = document.getElementById(`stats-${lvl}`);
+  const diff = count - ld.obstacleCount;
+  const diffStr = diff === 0 ? '' : ` (${diff > 0 ? '+' : ''}${diff} from target ${ld.obstacleCount})`;
+  statsEl.textContent = `Placed: ${count}${diffStr}`;
+  if (diff !== 0) statsEl.style.color = '#ff9800';
+  else statsEl.style.color = '#666';
+}
+
+// ── Validation ──
+function validateLevel(lvl) {
+  const ld = levelData[lvl];
+  const warnings = [];
+  let count = 0;
+  const positions = [];
+
+  for (let r = 0; r < ld.rows; r++) {
+    for (let c = 0; c < ld.cols; c++) {
+      if (ld.obstacles[r] && ld.obstacles[r][c]) {
+        count++;
+        positions.push({ r, c });
+      }
+    }
+  }
+
+  if (count !== ld.obstacleCount) {
+    warnings.push(`Has ${count} obstacles, config says ${ld.obstacleCount}`);
+  }
+
+  // Check for randomly scattered pattern (4+ obstacles with no neighbors)
+  if (count >= 4) {
+    let isolated = 0;
+    for (const p of positions) {
+      const hasNeighbor = positions.some(q =>
+        q !== p && Math.abs(q.r - p.r) <= 1 && Math.abs(q.c - p.c) <= 1
+      );
+      const isEdge = p.r === 0 || p.r === ld.rows-1 || p.c === 0 || p.c === ld.cols-1;
+      if (!hasNeighbor && !isEdge) isolated++;
+    }
+    if (isolated >= 2) {
+      warnings.push(`${isolated} isolated obstacles (not on edge, no neighbors) — consider grouping`);
+    }
+  }
+
+  return warnings;
+}
+
+function validateAll() {
+  let totalWarnings = 0;
+  for (let lvl = 1; lvl <= 50; lvl++) {
+    const warnings = validateLevel(lvl);
+    const card = document.getElementById(`card-${lvl}`);
+    const existing = card.querySelector('.warning');
+    if (existing) existing.remove();
+
+    if (warnings.length > 0) {
+      totalWarnings += warnings.length;
+      card.classList.add('has-warning');
+      const warnEl = document.createElement('div');
+      warnEl.className = 'warning';
+      warnEl.textContent = warnings.join(' | ');
+      card.appendChild(warnEl);
+    } else {
+      card.classList.remove('has-warning');
+    }
+  }
+  showToast(totalWarnings === 0 ? 'All levels valid!' : `${totalWarnings} warnings found`);
+}
+
+// ── Export ──
+function exportLayouts() {
+  let code = '// ── Obstacle Layouts ──\nconst OBSTACLE_LAYOUTS = {\n';
+  for (let lvl = 1; lvl <= 50; lvl++) {
+    const ld = levelData[lvl];
+    const placements = [];
+    for (let r = 0; r < ld.rows; r++) {
+      for (let c = 0; c < ld.cols; c++) {
+        if (ld.obstacles[r] && ld.obstacles[r][c]) {
+          placements.push(`{r:${r},c:${c},type:'${ld.obstacles[r][c].type}'}`);
+        }
+      }
+    }
+    if (placements.length === 0) continue;
+    code += `  ${lvl}: [\n    ${placements.join(', ')},\n  ],\n`;
+  }
+  code += '};\n\n';
+
+  // Export fixed gems
+  code += '// ── Fixed Gems (placed at game start, then move normally after matches) ──\nconst FIXED_GEMS = {\n';
+  for (let lvl = 1; lvl <= 50; lvl++) {
+    const ld = levelData[lvl];
+    const gems = [];
+    for (let r = 0; r < ld.rows; r++) {
+      for (let c = 0; c < ld.cols; c++) {
+        if (ld.fixedGems[r] && ld.fixedGems[r][c] !== null && ld.fixedGems[r][c] !== undefined) {
+          gems.push(`{r:${r},c:${c},gem:${ld.fixedGems[r][c]}}`);
+        }
+      }
+    }
+    if (gems.length === 0) continue;
+    code += `  ${lvl}: [\n    ${gems.join(', ')},\n  ],\n`;
+  }
+  code += '};\n\n';
+
+  // Export active gems per level
+  code += '// ── Active Gems per level (which gem types randomly populate) ──\nconst LEVEL_GEMS = {\n';
+  for (let lvl = 1; lvl <= 50; lvl++) {
+    const ld = levelData[lvl];
+    // Only export if different from default (0..cfg.gems-1)
+    const defaultGems = [];
+    for (let i = 0; i < ld.cfg.gems; i++) defaultGems.push(i);
+    const isDefault = ld.activeGems.length === defaultGems.length &&
+                      ld.activeGems.every((g, i) => g === defaultGems[i]);
+    if (isDefault) continue;
+    code += `  ${lvl}: [${ld.activeGems.join(', ')}],\n`;
+  }
+  code += '};\n\n';
+
+  // Export void masks (only for levels where mask differs from generated)
+  code += '// ── Custom Board Masks (void cells) ──\nconst CUSTOM_MASKS = {\n';
+  for (let lvl = 1; lvl <= 50; lvl++) {
+    const ld = levelData[lvl];
+    const defaultMask = generateBoardMask(lvl, ld.rows, ld.cols, ld.cfg.boardPct);
+    let differs = false;
+    for (let r = 0; r < ld.rows && !differs; r++)
+      for (let c = 0; c < ld.cols && !differs; c++)
+        if (!!ld.mask[r][c] !== !!defaultMask[r][c]) differs = true;
+    if (!differs) continue;
+    // Export as array of void positions
+    const voids = [];
+    for (let r = 0; r < ld.rows; r++)
+      for (let c = 0; c < ld.cols; c++)
+        if (!ld.mask[r][c]) voids.push(`{r:${r},c:${c}}`);
+    code += `  ${lvl}: [\n    ${voids.join(', ')},\n  ],\n`;
+  }
+  code += '};\n';
+
+  document.getElementById('export-text').value = code;
+  document.getElementById('export-modal').classList.add('show');
+}
+
+function copyExport() {
+  const textarea = document.getElementById('export-text');
+  textarea.select();
+  document.execCommand('copy');
+  showToast('Copied to clipboard!');
+}
+
+function closeExport() {
+  document.getElementById('export-modal').classList.remove('show');
+}
+
+// ── Reset ──
+function resetAll() {
+  if (!confirm('Reset all levels to default strategic layouts?')) return;
+  for (let lvl = 1; lvl <= 50; lvl++) {
+    const ld = levelData[lvl];
+    ld.obstacles = generateStrategicLayout(lvl, ld.rows, ld.cols, ld.mask, ld.obstacleCount, ld.obstacleTypes);
+  }
+  // Re-render
+  init();
+  showToast('All levels reset to defaults');
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.style.display = 'block';
+  setTimeout(() => toast.style.display = 'none', 2500);
+}
+
+// ── Level Generator ──
+let generatedResult = null; // { rows, cols, mask, obstacles, cfg }
+
+function generateLevel() {
+  const cols = parseInt(document.getElementById('gen-cols').value);
+  const rows = parseInt(document.getElementById('gen-rows').value);
+  const pct = parseInt(document.getElementById('gen-pct').value) / 100;
+  const pattern = document.getElementById('gen-pattern').value;
+  const mode = document.getElementById('gen-mode').value;
+  const target = parseInt(document.getElementById('gen-target').value);
+  const time = parseInt(document.getElementById('gen-time').value);
+  const moves = parseInt(document.getElementById('gen-moves').value);
+
+  // Count gems
+  let gems = 0;
+  for (let i = 0; i < 8; i++) {
+    if (document.getElementById(`gen-gem-${i}`).checked) gems++;
+  }
+  if (gems < 3) { showToast('Need at least 3 gem types'); return; }
+
+  // Collect obstacle requests
+  const obsTypes = ['ice', 'crate', 'giftbox', 'parcel'];
+  const obsRequests = []; // { type, qty }
+  let totalObs = 0;
+  for (const t of obsTypes) {
+    const checked = document.getElementById(`gen-obs-${t}`).checked;
+    const qty = parseInt(document.getElementById(`gen-obs-${t}-qty`).value) || 0;
+    if (checked && qty > 0) {
+      obsRequests.push({ type: t, qty });
+      totalObs += qty;
+    }
+  }
+
+  // Generate board mask
+  const mask = generateBoardMask(1, rows, cols, pct); // use lvl=1 for shape variety
+  let activeCells = 0;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (mask[r][c]) activeCells++;
+
+  if (totalObs > activeCells - 5) {
+    showToast(`Too many obstacles (${totalObs}) for ${activeCells} active cells`);
+    return;
+  }
+
+  // Build obstacle grid
+  const obstacles = [];
+  for (let r = 0; r < rows; r++) {
+    obstacles[r] = [];
+    for (let c = 0; c < cols; c++) obstacles[r][c] = null;
+  }
+
+  // Collect valid cells by category
+  const cr = (rows - 1) / 2;
+  const cc = (cols - 1) / 2;
+  const allValid = [];
+  const edgeCells = [];
+  const centerCells = [];
+  const topEdge = [], bottomEdge = [], leftEdge = [], rightEdge = [];
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!mask[r][c]) continue;
+      const isTop = r === 0, isBot = r === rows-1, isLeft = c === 0, isRight = c === cols-1;
+      const adjVoid = (r > 0 && !mask[r-1][c]) || (r < rows-1 && !mask[r+1][c]) ||
+                      (c > 0 && !mask[r][c-1]) || (c < cols-1 && !mask[r][c+1]);
+      const isEdge = isTop || isBot || isLeft || isRight || adjVoid;
+      const dist = Math.abs(r - cr) + Math.abs(c - cc);
+      const cell = { r, c, dist, isEdge };
+      allValid.push(cell);
+      if (isEdge) edgeCells.push(cell);
+      else centerCells.push(cell);
+      if (isTop || (r > 0 && !mask[r-1][c])) topEdge.push(cell);
+      if (isBot || (r < rows-1 && !mask[r+1][c])) bottomEdge.push(cell);
+      if (isLeft || (c > 0 && !mask[r][c-1])) leftEdge.push(cell);
+      if (isRight || (c < cols-1 && !mask[r][c+1])) rightEdge.push(cell);
+    }
+  }
+
+  centerCells.sort((a, b) => a.dist - b.dist);
+
+  // Place obstacles by type with chosen pattern
+  let allPlacements = []; // flat list of {r, c, type}
+
+  function placeCells(cells, type, qty) {
+    let placed = 0;
+    for (const cell of cells) {
+      if (placed >= qty) break;
+      if (obstacles[cell.r][cell.c]) continue;
+      obstacles[cell.r][cell.c] = { type };
+      allPlacements.push({ r: cell.r, c: cell.c, type });
+      placed++;
+    }
+    return placed;
+  }
+
+  for (const req of obsRequests) {
+    let remaining = req.qty;
+
+    if (pattern === 'edges') {
+      // Distribute along all edges
+      const shuffEdge = [...edgeCells].sort(() => Math.random() - 0.5);
+      remaining -= placeCells(shuffEdge, req.type, remaining);
+    } else if (pattern === 'center') {
+      remaining -= placeCells([...centerCells], req.type, remaining);
+      if (remaining > 0) remaining -= placeCells([...edgeCells], req.type, remaining);
+    } else if (pattern === 'h-stripe') {
+      // Place across horizontal stripes
+      const midR = Math.floor(rows / 2);
+      const stripeRows = [midR];
+      if (remaining > cols) stripeRows.push(midR - 1);
+      if (remaining > cols * 2) stripeRows.push(midR + 1);
+      const stripeCells = allValid.filter(c => stripeRows.includes(c.r)).sort((a, b) => a.c - b.c);
+      remaining -= placeCells(stripeCells, req.type, remaining);
+      if (remaining > 0) {
+        const extra = allValid.filter(c => !stripeRows.includes(c.r) && c.isEdge);
+        remaining -= placeCells(extra, req.type, remaining);
+      }
+    } else if (pattern === 'v-stripe') {
+      const midC = Math.floor(cols / 2);
+      const stripeCols = [midC];
+      if (remaining > rows) stripeCols.push(midC - 1);
+      if (remaining > rows * 2) stripeCols.push(midC + 1);
+      const stripeCells = allValid.filter(c => stripeCols.includes(c.c)).sort((a, b) => a.r - b.r);
+      remaining -= placeCells(stripeCells, req.type, remaining);
+      if (remaining > 0) {
+        const extra = allValid.filter(c => !stripeCols.includes(c.c) && c.isEdge);
+        remaining -= placeCells(extra, req.type, remaining);
+      }
+    } else if (pattern === 'border') {
+      // Walk the full border clockwise
+      const borderCells = [];
+      for (let c = 0; c < cols; c++) if (mask[0] && mask[0][c]) borderCells.push({ r: 0, c, dist: 0 });
+      for (let r = 1; r < rows; r++) if (mask[r] && mask[r][cols-1]) borderCells.push({ r, c: cols-1, dist: 0 });
+      for (let c = cols-2; c >= 0; c--) if (mask[rows-1] && mask[rows-1][c]) borderCells.push({ r: rows-1, c, dist: 0 });
+      for (let r = rows-2; r >= 1; r--) if (mask[r] && mask[r][0]) borderCells.push({ r, c: 0, dist: 0 });
+      // Evenly space around border
+      const step = Math.max(1, Math.floor(borderCells.length / remaining));
+      const spaced = [];
+      for (let i = 0; i < borderCells.length && spaced.length < remaining; i += step) {
+        spaced.push(borderCells[i]);
+      }
+      remaining -= placeCells(spaced, req.type, remaining);
+      if (remaining > 0) remaining -= placeCells(borderCells, req.type, remaining);
+    } else if (pattern === 'corners') {
+      // Place in the 4 corners of the board
+      const cornerRegions = [
+        allValid.filter(c => c.r < rows/3 && c.c < cols/3),
+        allValid.filter(c => c.r < rows/3 && c.c >= cols*2/3),
+        allValid.filter(c => c.r >= rows*2/3 && c.c < cols/3),
+        allValid.filter(c => c.r >= rows*2/3 && c.c >= cols*2/3),
+      ];
+      const perCorner = Math.ceil(remaining / 4);
+      for (const region of cornerRegions) {
+        region.sort((a, b) => {
+          const ad = Math.min(a.r, rows-1-a.r) + Math.min(a.c, cols-1-a.c);
+          const bd = Math.min(b.r, rows-1-b.r) + Math.min(b.c, cols-1-b.c);
+          return ad - bd;
+        });
+        remaining -= placeCells(region, req.type, Math.min(perCorner, remaining));
+      }
+    } else if (pattern === 'scatter') {
+      // Random scatter (only good for small numbers)
+      const shuffled = [...allValid].sort(() => Math.random() - 0.5);
+      remaining -= placeCells(shuffled, req.type, remaining);
+    } else if (pattern === 'random') {
+      const shuffled = [...allValid].sort(() => Math.random() - 0.5);
+      remaining -= placeCells(shuffled, req.type, remaining);
+    }
+
+    // Fallback for any remaining
+    if (remaining > 0) {
+      const fallback = [...allValid].sort(() => Math.random() - 0.5);
+      placeCells(fallback, req.type, remaining);
+    }
+  }
+
+  // Store result
+  const cfg = { gems, cols, rows, boardPct: pct, time, moves, target, mode,
+                obstacleCount: totalObs,
+                obstacleTypes: obsRequests.map(r => r.type) };
+  generatedResult = { rows, cols, mask, obstacles, cfg, totalObs };
+
+  // Render preview
+  renderGenPreview();
+  showToast('Level generated!');
+}
+
+function renderGenPreview() {
+  const prev = document.getElementById('gen-preview');
+  if (!generatedResult) { prev.innerHTML = ''; return; }
+  const { rows, cols, mask, obstacles, cfg, totalObs } = generatedResult;
+
+  let activeCells = 0;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (mask[r][c]) activeCells++;
+
+  let obsCount = 0;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (obstacles[r][c]) obsCount++;
+
+  let html = '<div>';
+  html += `<div class="board-grid" style="display:inline-grid; grid-template-columns:repeat(${cols}, 28px); grid-template-rows:repeat(${rows}, 28px); gap:1px;">`;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let cls = 'cell';
+      if (!mask[r][c]) cls += ' void';
+      else if (obstacles[r][c]) cls += ' ' + obstacles[r][c].type;
+      else cls += ' empty';
+      html += `<div class="${cls}" style="width:28px;height:28px;" data-gen-r="${r}" data-gen-c="${c}"></div>`;
+    }
+  }
+  html += '</div></div>';
+  html += `<div class="gen-preview-info">
+    <strong>Preview</strong><br>
+    ${cols}x${rows} board, ${activeCells} active cells<br>
+    ${obsCount} obstacles placed<br>
+    Mode: ${cfg.mode}, Target: ${cfg.target.toLocaleString()}<br>
+    Gems: ${cfg.gems}<br>
+    <em style="color:#666">Click cells to fine-tune, then Apply.</em>
+  </div>`;
+
+  prev.innerHTML = html;
+
+  // Add click handlers to preview cells for manual editing
+  prev.querySelectorAll('.cell:not(.void)').forEach(cell => {
+    cell.style.cursor = 'pointer';
+    cell.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      paintGenCell(parseInt(cell.dataset.genR), parseInt(cell.dataset.genC));
+    });
+    cell.addEventListener('mouseenter', () => {
+      if (mouseDown) paintGenCell(parseInt(cell.dataset.genR), parseInt(cell.dataset.genC));
+    });
+  });
+}
+
+function paintGenCell(r, c) {
+  if (!generatedResult) return;
+  const { mask, obstacles } = generatedResult;
+  if (!mask[r][c]) return;
+
+  if (currentBrush === 'eraser') {
+    obstacles[r][c] = null;
+  } else {
+    obstacles[r][c] = { type: currentBrush };
+  }
+
+  const cell = document.querySelector(`[data-gen-r="${r}"][data-gen-c="${c}"]`);
+  cell.className = 'cell';
+  cell.style.width = '28px';
+  cell.style.height = '28px';
+  cell.style.cursor = 'pointer';
+  if (obstacles[r][c]) cell.classList.add(obstacles[r][c].type);
+  else cell.classList.add('empty');
+}
+
+function applyGenerated() {
+  if (!generatedResult) { showToast('Generate a level first'); return; }
+  const sel = document.getElementById('gen-apply-target').value;
+  if (sel === 'preview') { showToast('Select a level to apply to'); return; }
+
+  const lvl = parseInt(sel);
+  const ld = levelData[lvl];
+  if (!ld) { showToast('Invalid level'); return; }
+
+  // Update level dimensions and mask to match generated board
+  ld.rows = generatedResult.rows;
+  ld.cols = generatedResult.cols;
+  ld.mask = generatedResult.mask;
+  ld.cfg.rows = generatedResult.rows;
+  ld.cfg.cols = generatedResult.cols;
+  ld.cfg.boardPct = generatedResult.cfg.boardPct;
+
+  // Rebuild obstacles and fixedGems arrays for new dimensions
+  ld.obstacles = [];
+  ld.fixedGems = [];
+  for (let r = 0; r < ld.rows; r++) {
+    ld.obstacles[r] = [];
+    ld.fixedGems[r] = [];
+    for (let c = 0; c < ld.cols; c++) {
+      ld.obstacles[r][c] = generatedResult.obstacles[r][c] ? { type: generatedResult.obstacles[r][c].type } : null;
+      ld.fixedGems[r][c] = null;
+    }
+  }
+
+  // Re-render that card
+  const card = document.getElementById(`card-${lvl}`);
+  const parent = card.parentElement;
+  const newCard = createLevelCard(lvl);
+  parent.replaceChild(newCard, card);
+  showToast(`Applied to Level ${lvl}`);
+}
+
+// Populate level selector dropdown
+function populateLevelSelector() {
+  const sel = document.getElementById('gen-apply-target');
+  const optgroup = sel.querySelector('optgroup');
+  for (let i = 1; i <= 50; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `Level ${i}`;
+    optgroup.appendChild(opt);
+  }
+}
+
+// Auto-check obstacle checkbox when qty > 0
+['ice', 'crate', 'giftbox', 'parcel'].forEach(t => {
+  const qtyInput = document.getElementById(`gen-obs-${t}-qty`);
+  const checkInput = document.getElementById(`gen-obs-${t}`);
+  qtyInput.addEventListener('input', () => {
+    if (parseInt(qtyInput.value) > 0) checkInput.checked = true;
+    else checkInput.checked = false;
+  });
+});
+
+// ── Go ──
+buildGemBrushes();
+init();
+populateLevelSelector();
+</script>
+</body>
+</html>

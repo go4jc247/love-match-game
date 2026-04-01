@@ -771,6 +771,350 @@ let showingTutorial = false;
 let tutorialText = '';
 let tutorialDiffBtns = []; // difficulty button rects for click detection
 
+// ── Guided Tutorial System ──
+// Deterministic boards + guided moves for levels introducing new mechanics
+let guidedTutorial = null; // { swap, highlight, message, postMessage, done }
+
+// Tutorial definitions: level → { grid, swap, message, postMessage }
+// Grids are verified: no pre-existing 3+ matches; the guided swap creates the taught pattern.
+const TUTORIAL_LEVELS = {
+  // Level 2: 4-in-a-row → Lightning (3 gem types, 5×6 board)
+  // Row 3 before: [1,2,0,0,1,0]. Swap (3,4)↔(3,3) impossible (same cell check).
+  // Use vertical swap: (2,2)=2,(3,2)=0. Swap (2,2)↔(3,2) → row 3=[1,2,2,0,1,0], row 2 col2=0.
+  // That doesn't create 4. Different approach:
+  // Row 3: [2,0,0,1,0,1]. Swap (3,3) with (2,3) where (2,3)=0.
+  // After: row 3=[2,0,0,0,0,1] = 4 in a row type 0 at cols 1-4 ✓
+  2: {
+    grid: [
+      [0, 1, 2, 1, 0, 2],
+      [2, 0, 1, 2, 1, 0],
+      [1, 2, 0, 0, 2, 1],
+      [2, 0, 0, 1, 0, 1],
+      [0, 1, 2, 0, 2, 0],
+    ],
+    swap: { r1: 2, c1: 3, r2: 3, c2: 3 },
+    message: 'Swap these to line up 4 in a row!',
+    postMessage: 'Lightning Bolt created! It clears a whole row or column.',
+  },
+  // Level 3: 2×2 square → Potion (4 gem types, 6×6 board)
+  // Need: (3,3)=1,(3,4)=1,(4,3)=1. Swap brings (4,4) to be 1.
+  // (4,4)=2, swap with (4,3)? No. Use (3,4)=1,(4,4)=0. Swap (4,4)↔(4,3): (4,3)=0→1? No.
+  // Simpler: (2,2)=1,(2,3)=1,(3,2)=1,(3,3)=0. Swap (3,3)↔(3,4) where (3,4)=1.
+  // After: (3,3)=1 → 2×2 at (2,2)(2,3)(3,2)(3,3) ✓
+  3: {
+    grid: [
+      [0, 1, 2, 3, 0, 1],
+      [3, 0, 3, 0, 2, 3],
+      [0, 3, 1, 1, 0, 2],
+      [2, 0, 1, 0, 1, 3],
+      [1, 3, 2, 3, 2, 0],
+      [3, 2, 0, 1, 3, 1],
+    ],
+    swap: { r1: 3, c1: 3, r2: 3, c2: 4 },
+    message: 'Swap these to make a 2x2 square!',
+    postMessage: 'Potion created! It transforms nearby tiles.',
+  },
+  // Level 4: L/T shape → Bomb (4 gem types, 6×6 board)
+  // L-shape = 3 in a row + 1 perpendicular from one end.
+  // Row 2: (2,1)=2,(2,2)=2. Col 2: (3,2)=2. Swap (2,3)↔(2,2)? No.
+  // Setup: row 2 cols 2,3,4 = [2,2,X]. (3,4)=2 for vertical. Swap (2,4)↔(2,3)?
+  // Pre: row 2=[1,0,2,2,3,0]. Swap (2,4)↔(3,4) where (3,4)=2.
+  // After: (2,4)=2, row 2=[1,0,2,2,2,0]=3 in a row + (3,4) was 2 now at (2,4)...
+  // L: (2,2),(2,3),(2,4) horizontal + (3,2)=2 vertical. But (3,2)=? Need to set it.
+  4: {
+    grid: [
+      [0, 1, 3, 0, 1, 3],
+      [3, 2, 0, 3, 0, 1],
+      [1, 0, 2, 2, 3, 0],
+      [0, 3, 2, 1, 0, 3],
+      [2, 1, 0, 3, 1, 2],
+      [3, 0, 3, 0, 2, 1],
+    ],
+    swap: { r1: 2, c1: 4, r2: 3, c2: 4 },
+    message: 'Swap these to form an L-shape!',
+    postMessage: 'Bomb created! It explodes a 3x3 area.',
+  },
+  // Level 5: 5-in-a-row → Rainbow Star (4 gem types, 6×7 board)
+  // Row 3: [3,0,0,2,0,0,1]. Swap (3,3)↔(2,3) where (2,3)=0.
+  // After: row 3=[3,0,0,0,0,0,1] = 5 type-0 at cols 1-5 ✓
+  5: {
+    grid: [
+      [0, 1, 2, 3, 1, 2, 0],
+      [3, 2, 1, 0, 3, 1, 2],
+      [1, 3, 0, 0, 2, 3, 1],
+      [3, 0, 0, 2, 0, 0, 1],
+      [0, 1, 3, 1, 2, 3, 0],
+      [2, 3, 1, 0, 3, 1, 2],
+    ],
+    swap: { r1: 2, c1: 3, r2: 3, c2: 3 },
+    message: 'Swap these for 5 in a row!',
+    postMessage: 'Rainbow Star! Swap it with any gem to clear all of that type.',
+  },
+  // Level 6: Obstacles — random board but highlight a move near an obstacle
+  6: {
+    useHintNearObstacle: true,
+    message: 'Match next to the obstacle to damage it!',
+    postMessage: 'Nice! Keep matching near obstacles to break them.',
+  },
+};
+
+// Compute all cells that will be matched + the swap cells (for tutorial highlighting)
+function computeTutorialHighlight(r1, c1, r2, c2) {
+  // Temporarily swap, find matches, swap back
+  [grid[r1][c1], grid[r2][c2]] = [grid[r2][c2], grid[r1][c1]];
+  const matches = findMatches();
+  [grid[r1][c1], grid[r2][c2]] = [grid[r2][c2], grid[r1][c1]];
+
+  // Build highlight set: swap cells + all matched cells
+  const seen = new Set();
+  const highlight = [];
+  function addCell(row, col) {
+    const k = row * 1000 + col;
+    if (!seen.has(k)) { seen.add(k); highlight.push({ row, col }); }
+  }
+  // Swap cells first (they get special "swap" marker for the arrow)
+  addCell(r1, c1);
+  addCell(r2, c2);
+  // All matched cells
+  for (const key of matches) {
+    addCell(Math.floor(key / COLS), key % COLS);
+  }
+  // Also highlight adjacent obstacles that will be damaged
+  for (const key of matches) {
+    const mr = Math.floor(key / COLS), mc = key % COLS;
+    for (const [adjR, adjC] of [[mr-1,mc],[mr+1,mc],[mr,mc-1],[mr,mc+1]]) {
+      if (adjR >= 0 && adjR < ROWS && adjC >= 0 && adjC < COLS && hasObstacle(adjR, adjC)) {
+        addCell(adjR, adjC);
+      }
+    }
+  }
+  return highlight;
+}
+
+// Start guided tutorial for current level (called after grid init)
+function startGuidedTutorial() {
+  const tutDef = TUTORIAL_LEVELS[level];
+  if (!tutDef) { guidedTutorial = null; return; }
+
+  if (tutDef.useHintNearObstacle) {
+    // For obstacle levels: find a move adjacent to an obstacle
+    const hint = findHintNearObstacle() || findHintMove();
+    if (hint) {
+      const r1 = hint[0].row, c1 = hint[0].col, r2 = hint[1].row, c2 = hint[1].col;
+      guidedTutorial = {
+        swap: { r1, c1, r2, c2 },
+        swapCells: [{ row: r1, col: c1 }, { row: r2, col: c2 }],
+        highlight: computeTutorialHighlight(r1, c1, r2, c2),
+        message: tutDef.message,
+        postMessage: tutDef.postMessage,
+        done: false, postTimer: 0,
+      };
+    } else {
+      guidedTutorial = null;
+    }
+  } else if (tutDef.swap) {
+    const s = tutDef.swap;
+    guidedTutorial = {
+      swap: { ...s },
+      swapCells: [{ row: s.r1, col: s.c1 }, { row: s.r2, col: s.c2 }],
+      highlight: computeTutorialHighlight(s.r1, s.c1, s.r2, s.c2),
+      message: tutDef.message,
+      postMessage: tutDef.postMessage,
+      done: false, postTimer: 0,
+    };
+  }
+}
+
+// Find a hint move that creates a match adjacent to an obstacle
+function findHintNearObstacle() {
+  const dirs = [[0,1],[1,0]];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] < 0 || !boardMask[r] || !boardMask[r][c]) continue;
+      if (hasObstacle(r, c)) continue;
+      for (const [dr, dc] of dirs) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= ROWS || nc >= COLS) continue;
+        if (grid[nr][nc] < 0 || !boardMask[nr] || !boardMask[nr][nc]) continue;
+        if (hasObstacle(nr, nc)) continue;
+        [grid[r][c], grid[nr][nc]] = [grid[nr][nc], grid[r][c]];
+        const matches = findMatches();
+        [grid[r][c], grid[nr][nc]] = [grid[nr][nc], grid[r][c]];
+        if (matches.size > 0) {
+          for (const key of matches) {
+            const mr = Math.floor(key / COLS), mc = key % COLS;
+            for (const [adjR, adjC] of [[mr-1,mc],[mr+1,mc],[mr,mc-1],[mr,mc+1]]) {
+              if (adjR >= 0 && adjR < ROWS && adjC >= 0 && adjC < COLS && hasObstacle(adjR, adjC)) {
+                return [{row: r, col: c}, {row: nr, col: nc}];
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Check if a swap matches the guided tutorial swap (either direction)
+function isTutorialSwap(r1, c1, r2, c2) {
+  if (!guidedTutorial || guidedTutorial.done) return true;
+  const s = guidedTutorial.swap;
+  return (r1 === s.r1 && c1 === s.c1 && r2 === s.r2 && c2 === s.c2) ||
+         (r1 === s.r2 && c1 === s.c2 && r2 === s.r1 && c2 === s.c1);
+}
+
+// Shared "nudge" animation: two cells do a partial swap (~15%) then bounce back.
+// Returns the pixel offset {dx, dy} to apply to cell 0 (cell 1 gets the negative).
+// The nudge fires every ~2.5s: quick slide out (0.15s), elastic bounce back (0.35s), then idle.
+function calcSwapNudge(time, cell0, cell1) {
+  const cycle = 2.0; // seconds per nudge cycle
+  const phase = (time % cycle) / cycle; // 0→1 within cycle
+  const nudgeFrac = 0.22; // how far to slide (fraction of tileSize)
+
+  // Direction vector from cell0 to cell1
+  const dirX = (cell1.col - cell0.col);
+  const dirY = (cell1.row - cell0.row);
+
+  let t = 0; // displacement factor: 0 = home, 1 = full nudge distance
+  if (phase < 0.10) {
+    // Slide out: 0→1 ease-out
+    const p = phase / 0.10;
+    t = 1 - (1 - p) * (1 - p); // ease out (decelerate)
+  } else if (phase < 0.35) {
+    // Elastic bounce back: 1→0 with overshoot
+    const p = (phase - 0.10) / 0.25;
+    t = (1 - p) * Math.cos(p * Math.PI * 2) * Math.exp(-p * 2.5);
+  }
+  // else t = 0 (idle until next cycle)
+
+  return {
+    dx: dirX * t * tileSize * nudgeFrac,
+    dy: dirY * t * tileSize * nudgeFrac,
+  };
+}
+
+// Draw the guided tutorial overlay
+function drawGuidedTutorial(time) {
+  if (!guidedTutorial) return;
+  const gt = guidedTutorial;
+
+  if (gt.done) {
+    // Show post-message briefly
+    if (gt.postTimer > 0) {
+      const alpha = Math.min(1, gt.postTimer);
+      ctx.save();
+      ctx.fillStyle = `rgba(0,0,0,${0.5 * alpha})`;
+      ctx.fillRect(0, 0, W, H);
+      const boxW = W * 0.9;
+      const boxH = tileSize * 1.8;
+      const boxX = (W - boxW) / 2;
+      const boxY = boardY + tileSize * ROWS / 2 - boxH / 2;
+      drawRoundedRect(boxX, boxY, boxW, boxH, 12);
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.fill();
+      ctx.fillStyle = `rgba(76,175,80,${alpha})`;
+      ctx.font = 'bold ' + (tileSize * 0.28) + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Word-wrap post message
+      const pmWords = gt.postMessage.split(' ');
+      const pmMaxW = boxW - 20;
+      let pmLines = [], pmCur = '';
+      for (const w of pmWords) {
+        const test = pmCur ? pmCur + ' ' + w : w;
+        if (ctx.measureText(test).width > pmMaxW) { pmLines.push(pmCur); pmCur = w; }
+        else { pmCur = test; }
+      }
+      if (pmCur) pmLines.push(pmCur);
+      const pmLineH = tileSize * 0.38;
+      const pmStartY = boxY + boxH / 2 - (pmLines.length - 1) * pmLineH / 2;
+      for (let i = 0; i < pmLines.length; i++) {
+        ctx.fillText(pmLines[i], W / 2, pmStartY + i * pmLineH);
+      }
+      ctx.restore();
+    }
+    return;
+  }
+
+  // Dark overlay over entire board
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(boardX - 4, boardY - 4, tileSize * COLS + 8, tileSize * ROWS + 8);
+
+  // Determine swap cells
+  const swapSet = new Set();
+  if (gt.swapCells) {
+    for (const sc of gt.swapCells) swapSet.add(sc.row * 1000 + sc.col);
+  }
+
+  // Calculate nudge offset for swap cells
+  let nudge = { dx: 0, dy: 0 };
+  if (gt.swapCells && gt.swapCells.length === 2) {
+    nudge = calcSwapNudge(time, gt.swapCells[0], gt.swapCells[1]);
+  }
+
+  const rad = tileSize * 0.15;
+
+  // For each highlighted cell: clear overlay, draw white rounded rect, redraw tile
+  for (const cell of gt.highlight) {
+    const cx = boardX + cell.col * tileSize;
+    const cy = boardY + cell.row * tileSize;
+
+    // Clear the dark overlay using the rounded rect shape (not a full square)
+    drawRoundedRect(cx, cy, tileSize, tileSize, rad);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.fill();
+    ctx.restore();
+
+    // Draw white rounded rectangle background
+    drawRoundedRect(cx, cy, tileSize, tileSize, rad);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    // Redraw the tile on top
+    const isSwapCell = swapSet.has(cell.row * 1000 + cell.col);
+    const isObstacleCell = hasObstacle(cell.row, cell.col);
+    let cellNudgeX = 0, cellNudgeY = 0;
+    if (isSwapCell && gt.swapCells) {
+      if (cell.row === gt.swapCells[0].row && cell.col === gt.swapCells[0].col) {
+        cellNudgeX = nudge.dx; cellNudgeY = nudge.dy;
+      } else {
+        cellNudgeX = -nudge.dx; cellNudgeY = -nudge.dy;
+      }
+    }
+    const tileOv = isSwapCell ? { x: cx + cellNudgeX, y: cy + cellNudgeY } : null;
+    if (isObstacleCell) {
+      drawObstacle(cell.row, cell.col, obstacles[cell.row][cell.col]);
+    } else if (special[cell.row] && special[cell.row][cell.col] > 0) {
+      drawSpecialTile(cell.row, cell.col, grid[cell.row][cell.col], tileOv);
+    } else {
+      drawTile(cell.row, cell.col, grid[cell.row][cell.col], tileOv);
+    }
+  }
+
+  // Tutorial message overlaid at top of board
+  const msgBoxW = W * 0.9;
+  const msgBoxH = tileSize * 0.9;
+  const msgBoxX = (W - msgBoxW) / 2;
+  const msgBoxY = boardY + tileSize * 0.3;
+  drawRoundedRect(msgBoxX, msgBoxY, msgBoxW, msgBoxH, 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fill();
+  ctx.strokeStyle = '#e91e63';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = '#880e4f';
+  ctx.font = 'bold ' + (tileSize * 0.28) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(gt.message, W / 2, msgBoxY + msgBoxH / 2);
+
+  ctx.restore();
+}
+
 // Level completion state
 let levelComplete = false;
 let levelCompleteToolQueue = []; // [{row, col, toolNum}] — tools to activate one by one
@@ -780,6 +1124,14 @@ let levelCompleteDelay = 0; // timer between tool activations
 let hintTimer = 0;       // seconds since last player action
 let hintCells = null;    // [{row, col}] cells to highlight, or null
 const HINT_DELAY = 5;    // seconds before hint appears
+
+function clearHint() {
+  if (hintCells) {
+    for (const cell of hintCells) clearOverride(cell.row, cell.col);
+  }
+  hintTimer = 0;
+  hintCells = null;
+}
 
 // Animation state
 let animations = [];  // active animations
@@ -941,6 +1293,145 @@ const OBSTACLE_TYPES = {
 // Collect all obstacle sprite files for preloading
 const OBSTACLE_SPRITE_FILES = Object.values(OBSTACLE_TYPES).flatMap(t => t.sprites);
 
+// ── Hardcoded obstacle layouts per level ──
+const OBSTACLE_LAYOUTS = {
+  6: [
+    {r:3,c:3,type:'crate'}, {r:5,c:3,type:'crate'},
+  ],
+  7: [
+    {r:2,c:5,type:'crate'}, {r:3,c:1,type:'crate'}, {r:3,c:3,type:'crate'},
+  ],
+  8: [
+    {r:2,c:1,type:'crate'}, {r:2,c:2,type:'crate'}, {r:3,c:3,type:'crate'},
+  ],
+  9: [
+    {r:0,c:2,type:'crate'}, {r:0,c:3,type:'ice'}, {r:7,c:2,type:'crate'}, {r:7,c:3,type:'ice'},
+  ],
+  10: [
+    {r:3,c:3,type:'crate'}, {r:3,c:4,type:'ice'}, {r:4,c:3,type:'crate'}, {r:4,c:4,type:'ice'},
+  ],
+  11: [
+    {r:1,c:0,type:'crate'}, {r:1,c:7,type:'ice'}, {r:2,c:0,type:'crate'}, {r:2,c:7,type:'ice'}, {r:3,c:0,type:'crate'},
+  ],
+  12: [
+    {r:0,c:3,type:'crate'}, {r:0,c:4,type:'ice'}, {r:1,c:2,type:'crate'}, {r:7,c:3,type:'crate'}, {r:7,c:4,type:'ice'},
+  ],
+  13: [
+    {r:2,c:3,type:'ice'}, {r:2,c:4,type:'giftbox'}, {r:3,c:3,type:'crate'}, {r:3,c:4,type:'ice'}, {r:4,c:3,type:'giftbox'}, {r:4,c:4,type:'crate'},
+  ],
+  14: [
+    {r:2,c:0,type:'crate'}, {r:2,c:7,type:'ice'}, {r:3,c:0,type:'giftbox'}, {r:3,c:7,type:'crate'}, {r:4,c:0,type:'ice'}, {r:4,c:7,type:'giftbox'},
+  ],
+  15: [
+    {r:0,c:0,type:'crate'}, {r:0,c:1,type:'ice'}, {r:0,c:2,type:'giftbox'}, {r:0,c:3,type:'crate'}, {r:0,c:4,type:'ice'}, {r:0,c:5,type:'giftbox'}, {r:0,c:6,type:'crate'},
+  ],
+  16: [
+    {r:0,c:4,type:'crate'}, {r:1,c:4,type:'ice'}, {r:2,c:4,type:'giftbox'}, {r:3,c:4,type:'crate'}, {r:4,c:4,type:'ice'}, {r:5,c:4,type:'giftbox'}, {r:6,c:4,type:'crate'},
+  ],
+  17: [
+    {r:2,c:2,type:'crate'}, {r:2,c:3,type:'ice'}, {r:2,c:4,type:'giftbox'}, {r:3,c:2,type:'parcel'}, {r:3,c:3,type:'crate'}, {r:3,c:4,type:'ice'}, {r:4,c:2,type:'giftbox'}, {r:4,c:3,type:'parcel'},
+  ],
+  18: [
+    {r:0,c:0,type:'crate'}, {r:0,c:1,type:'ice'}, {r:0,c:2,type:'giftbox'}, {r:0,c:3,type:'parcel'}, {r:0,c:4,type:'crate'}, {r:0,c:5,type:'ice'}, {r:0,c:6,type:'giftbox'}, {r:0,c:7,type:'parcel'},
+  ],
+  19: [
+    {r:3,c:0,type:'crate'}, {r:4,c:0,type:'crate'}, {r:4,c:1,type:'ice'}, {r:4,c:2,type:'giftbox'}, {r:4,c:3,type:'parcel'}, {r:4,c:4,type:'crate'}, {r:4,c:5,type:'ice'}, {r:4,c:6,type:'giftbox'}, {r:4,c:7,type:'parcel'},
+  ],
+  20: [
+    {r:2,c:2,type:'crate'}, {r:2,c:3,type:'ice'}, {r:2,c:4,type:'giftbox'}, {r:3,c:2,type:'parcel'}, {r:3,c:3,type:'crate'}, {r:3,c:4,type:'ice'}, {r:4,c:2,type:'giftbox'}, {r:4,c:3,type:'parcel'}, {r:4,c:4,type:'crate'},
+  ],
+  21: [
+    {r:2,c:2,type:'ice'}, {r:2,c:3,type:'ice'}, {r:2,c:4,type:'ice'}, {r:3,c:2,type:'ice'}, {r:3,c:3,type:'ice'}, {r:3,c:4,type:'ice'}, {r:4,c:2,type:'ice'}, {r:4,c:3,type:'ice'},
+  ],
+  22: [
+    {r:2,c:0,type:'ice'}, {r:2,c:1,type:'ice'}, {r:2,c:2,type:'ice'}, {r:2,c:3,type:'ice'}, {r:2,c:4,type:'ice'}, {r:2,c:5,type:'ice'}, {r:5,c:0,type:'ice'}, {r:5,c:1,type:'ice'}, {r:5,c:2,type:'ice'}, {r:5,c:3,type:'ice'}, {r:5,c:4,type:'ice'},
+  ],
+  23: [
+    {r:0,c:4,type:'ice'}, {r:1,c:4,type:'ice'}, {r:2,c:0,type:'ice'}, {r:2,c:4,type:'ice'}, {r:2,c:7,type:'ice'}, {r:3,c:0,type:'ice'}, {r:3,c:4,type:'ice'}, {r:3,c:7,type:'ice'}, {r:4,c:0,type:'ice'}, {r:4,c:4,type:'ice'}, {r:4,c:7,type:'ice'}, {r:5,c:0,type:'ice'}, {r:5,c:4,type:'ice'}, {r:5,c:7,type:'ice'},
+  ],
+  24: [
+    {r:0,c:0,type:'crate'}, {r:0,c:1,type:'crate'}, {r:0,c:2,type:'crate'}, {r:0,c:3,type:'crate'}, {r:0,c:4,type:'crate'}, {r:0,c:5,type:'crate'}, {r:0,c:6,type:'crate'}, {r:0,c:7,type:'crate'}, {r:7,c:0,type:'crate'}, {r:7,c:1,type:'crate'},
+  ],
+  25: [
+    {r:2,c:0,type:'crate'}, {r:2,c:1,type:'crate'}, {r:2,c:2,type:'crate'}, {r:2,c:3,type:'crate'}, {r:2,c:4,type:'crate'}, {r:2,c:5,type:'crate'}, {r:5,c:0,type:'crate'}, {r:5,c:1,type:'crate'}, {r:5,c:2,type:'crate'}, {r:5,c:3,type:'crate'}, {r:5,c:4,type:'crate'}, {r:5,c:5,type:'crate'},
+  ],
+  26: [
+    {r:0,c:0,type:'crate'}, {r:0,c:4,type:'crate'}, {r:0,c:7,type:'crate'}, {r:1,c:0,type:'crate'}, {r:1,c:4,type:'crate'}, {r:1,c:7,type:'crate'}, {r:2,c:0,type:'crate'}, {r:2,c:4,type:'crate'}, {r:2,c:7,type:'crate'}, {r:3,c:0,type:'crate'}, {r:3,c:4,type:'crate'}, {r:3,c:7,type:'crate'}, {r:4,c:4,type:'crate'}, {r:4,c:7,type:'crate'}, {r:5,c:4,type:'crate'},
+  ],
+  27: [
+    {r:0,c:4,type:'parcel'}, {r:1,c:4,type:'giftbox'}, {r:2,c:4,type:'parcel'}, {r:3,c:4,type:'giftbox'}, {r:4,c:4,type:'parcel'}, {r:5,c:4,type:'giftbox'}, {r:6,c:4,type:'parcel'}, {r:7,c:4,type:'giftbox'},
+  ],
+  28: [
+    {r:0,c:0,type:'parcel'}, {r:0,c:1,type:'giftbox'}, {r:0,c:2,type:'parcel'}, {r:0,c:3,type:'giftbox'}, {r:0,c:4,type:'parcel'}, {r:0,c:5,type:'giftbox'}, {r:0,c:6,type:'parcel'}, {r:0,c:7,type:'giftbox'}, {r:7,c:0,type:'parcel'}, {r:7,c:1,type:'giftbox'},
+  ],
+  29: [
+    {r:0,c:0,type:'parcel'}, {r:0,c:4,type:'giftbox'}, {r:0,c:7,type:'giftbox'}, {r:1,c:0,type:'giftbox'}, {r:1,c:4,type:'parcel'}, {r:1,c:7,type:'parcel'}, {r:2,c:0,type:'parcel'}, {r:2,c:4,type:'giftbox'}, {r:2,c:7,type:'giftbox'}, {r:3,c:4,type:'parcel'}, {r:3,c:7,type:'parcel'}, {r:4,c:4,type:'giftbox'},
+  ],
+  30: [
+    {r:3,c:0,type:'giftbox'}, {r:3,c:1,type:'giftbox'}, {r:4,c:0,type:'giftbox'}, {r:4,c:1,type:'giftbox'}, {r:4,c:2,type:'giftbox'}, {r:4,c:3,type:'giftbox'}, {r:4,c:4,type:'giftbox'}, {r:4,c:5,type:'giftbox'}, {r:4,c:6,type:'giftbox'}, {r:4,c:7,type:'giftbox'},
+  ],
+  31: [
+    {r:2,c:0,type:'giftbox'}, {r:2,c:1,type:'giftbox'}, {r:2,c:2,type:'giftbox'}, {r:2,c:3,type:'giftbox'}, {r:2,c:4,type:'giftbox'}, {r:2,c:5,type:'giftbox'}, {r:5,c:0,type:'giftbox'}, {r:5,c:1,type:'giftbox'}, {r:5,c:2,type:'giftbox'}, {r:5,c:3,type:'giftbox'}, {r:5,c:4,type:'giftbox'}, {r:5,c:5,type:'giftbox'},
+  ],
+  32: [
+    {r:0,c:0,type:'giftbox'}, {r:0,c:4,type:'giftbox'}, {r:0,c:7,type:'giftbox'}, {r:1,c:0,type:'giftbox'}, {r:1,c:4,type:'giftbox'}, {r:1,c:7,type:'giftbox'}, {r:2,c:0,type:'giftbox'}, {r:2,c:4,type:'giftbox'}, {r:2,c:7,type:'giftbox'}, {r:3,c:0,type:'giftbox'}, {r:3,c:4,type:'giftbox'}, {r:3,c:7,type:'giftbox'}, {r:4,c:4,type:'giftbox'}, {r:4,c:7,type:'giftbox'},
+  ],
+  33: [
+    {r:0,c:3,type:'ice'}, {r:0,c:4,type:'crate'}, {r:2,c:3,type:'ice'}, {r:2,c:4,type:'crate'}, {r:3,c:2,type:'giftbox'}, {r:3,c:3,type:'ice'}, {r:3,c:4,type:'crate'}, {r:3,c:5,type:'parcel'}, {r:4,c:3,type:'giftbox'}, {r:4,c:4,type:'parcel'}, {r:7,c:3,type:'giftbox'}, {r:7,c:4,type:'parcel'},
+  ],
+  34: [
+    {r:2,c:0,type:'ice'}, {r:2,c:1,type:'crate'}, {r:2,c:2,type:'giftbox'}, {r:2,c:3,type:'parcel'}, {r:2,c:4,type:'ice'}, {r:2,c:5,type:'crate'}, {r:2,c:6,type:'giftbox'}, {r:5,c:0,type:'parcel'}, {r:5,c:1,type:'ice'}, {r:5,c:2,type:'crate'}, {r:5,c:3,type:'giftbox'}, {r:5,c:4,type:'parcel'}, {r:5,c:5,type:'ice'}, {r:5,c:6,type:'crate'},
+  ],
+  35: [
+    {r:0,c:4,type:'ice'}, {r:1,c:4,type:'crate'}, {r:2,c:0,type:'ice'}, {r:2,c:4,type:'giftbox'}, {r:2,c:7,type:'ice'}, {r:3,c:0,type:'crate'}, {r:3,c:4,type:'parcel'}, {r:3,c:7,type:'crate'}, {r:4,c:0,type:'giftbox'}, {r:4,c:4,type:'ice'}, {r:4,c:7,type:'giftbox'}, {r:5,c:0,type:'parcel'}, {r:5,c:4,type:'crate'}, {r:5,c:7,type:'parcel'}, {r:6,c:4,type:'giftbox'}, {r:7,c:4,type:'parcel'},
+  ],
+  36: [
+    {r:0,c:0,type:'ice'}, {r:0,c:1,type:'crate'}, {r:7,c:0,type:'ice'}, {r:7,c:1,type:'crate'},
+  ],
+  37: [
+    {r:2,c:3,type:'ice'}, {r:3,c:3,type:'ice'}, {r:3,c:4,type:'crate'}, {r:4,c:3,type:'ice'}, {r:4,c:4,type:'crate'},
+  ],
+  38: [
+    {r:1,c:0,type:'ice'}, {r:1,c:7,type:'crate'}, {r:2,c:0,type:'giftbox'}, {r:2,c:7,type:'ice'}, {r:3,c:0,type:'crate'}, {r:3,c:7,type:'giftbox'},
+  ],
+  39: [
+    {r:0,c:2,type:'ice'}, {r:0,c:3,type:'giftbox'}, {r:0,c:4,type:'ice'}, {r:7,c:2,type:'giftbox'}, {r:7,c:3,type:'ice'}, {r:7,c:4,type:'giftbox'},
+  ],
+  40: [
+    {r:4,c:0,type:'ice'}, {r:4,c:1,type:'crate'}, {r:4,c:2,type:'giftbox'}, {r:4,c:3,type:'ice'}, {r:4,c:4,type:'crate'}, {r:4,c:5,type:'giftbox'}, {r:4,c:6,type:'ice'}, {r:4,c:7,type:'crate'},
+  ],
+  41: [
+    {r:0,c:3,type:'ice'}, {r:0,c:4,type:'ice'}, {r:1,c:3,type:'crate'}, {r:1,c:4,type:'crate'}, {r:2,c:4,type:'giftbox'}, {r:3,c:4,type:'parcel'}, {r:4,c:4,type:'ice'}, {r:5,c:4,type:'crate'}, {r:6,c:4,type:'giftbox'}, {r:7,c:4,type:'parcel'},
+  ],
+  42: [
+    {r:0,c:0,type:'ice'}, {r:0,c:1,type:'crate'}, {r:0,c:2,type:'ice'}, {r:5,c:0,type:'crate'}, {r:5,c:1,type:'ice'}, {r:5,c:2,type:'crate'},
+  ],
+  43: [
+    {r:0,c:1,type:'giftbox'}, {r:0,c:2,type:'ice'}, {r:1,c:1,type:'ice'}, {r:1,c:2,type:'crate'}, {r:2,c:1,type:'crate'}, {r:2,c:2,type:'giftbox'}, {r:3,c:2,type:'ice'}, {r:4,c:2,type:'crate'},
+  ],
+  44: [
+    {r:0,c:0,type:'ice'}, {r:0,c:1,type:'crate'}, {r:0,c:2,type:'giftbox'}, {r:0,c:3,type:'parcel'}, {r:0,c:4,type:'ice'}, {r:0,c:5,type:'crate'}, {r:5,c:0,type:'giftbox'}, {r:5,c:1,type:'parcel'}, {r:5,c:2,type:'ice'}, {r:5,c:3,type:'crate'},
+  ],
+  45: [
+    {r:0,c:2,type:'ice'}, {r:0,c:3,type:'crate'}, {r:0,c:4,type:'ice'}, {r:0,c:5,type:'crate'}, {r:2,c:3,type:'ice'}, {r:2,c:4,type:'crate'}, {r:3,c:3,type:'ice'}, {r:3,c:4,type:'crate'}, {r:4,c:3,type:'ice'}, {r:4,c:4,type:'crate'}, {r:7,c:2,type:'ice'}, {r:7,c:3,type:'crate'}, {r:7,c:4,type:'ice'}, {r:7,c:5,type:'crate'},
+  ],
+  46: [
+    {r:2,c:0,type:'ice'}, {r:2,c:1,type:'crate'}, {r:2,c:2,type:'ice'}, {r:2,c:3,type:'crate'}, {r:2,c:4,type:'ice'}, {r:2,c:5,type:'crate'}, {r:2,c:6,type:'ice'}, {r:2,c:7,type:'crate'}, {r:5,c:0,type:'ice'}, {r:5,c:1,type:'crate'}, {r:5,c:2,type:'ice'}, {r:5,c:3,type:'crate'}, {r:5,c:4,type:'ice'}, {r:5,c:5,type:'crate'}, {r:5,c:6,type:'ice'}, {r:5,c:7,type:'crate'},
+  ],
+  47: [
+    {r:0,c:2,type:'ice'}, {r:0,c:3,type:'crate'}, {r:0,c:4,type:'ice'}, {r:1,c:4,type:'crate'}, {r:2,c:0,type:'ice'}, {r:2,c:4,type:'ice'}, {r:2,c:7,type:'ice'}, {r:3,c:0,type:'crate'}, {r:3,c:4,type:'crate'}, {r:3,c:7,type:'crate'}, {r:4,c:0,type:'ice'}, {r:4,c:4,type:'ice'}, {r:4,c:7,type:'ice'}, {r:5,c:0,type:'crate'}, {r:5,c:4,type:'crate'}, {r:5,c:7,type:'crate'}, {r:6,c:4,type:'ice'}, {r:7,c:4,type:'crate'},
+  ],
+  48: [
+    {r:0,c:3,type:'ice'}, {r:0,c:4,type:'crate'}, {r:2,c:3,type:'ice'}, {r:2,c:4,type:'crate'}, {r:3,c:2,type:'giftbox'}, {r:3,c:3,type:'ice'}, {r:3,c:4,type:'crate'}, {r:3,c:5,type:'parcel'}, {r:4,c:2,type:'ice'}, {r:4,c:3,type:'giftbox'}, {r:4,c:4,type:'parcel'}, {r:4,c:5,type:'crate'}, {r:5,c:3,type:'giftbox'}, {r:7,c:3,type:'giftbox'}, {r:7,c:4,type:'parcel'},
+  ],
+  49: [
+    {r:2,c:0,type:'ice'}, {r:2,c:1,type:'crate'}, {r:2,c:2,type:'giftbox'}, {r:2,c:3,type:'parcel'}, {r:2,c:4,type:'ice'}, {r:2,c:5,type:'crate'}, {r:2,c:6,type:'giftbox'}, {r:2,c:7,type:'parcel'}, {r:5,c:0,type:'ice'}, {r:5,c:1,type:'crate'}, {r:5,c:2,type:'giftbox'}, {r:5,c:3,type:'parcel'}, {r:5,c:4,type:'ice'}, {r:5,c:5,type:'crate'}, {r:5,c:6,type:'giftbox'}, {r:5,c:7,type:'parcel'},
+  ],
+  50: [
+    {r:0,c:2,type:'ice'}, {r:0,c:3,type:'crate'}, {r:0,c:4,type:'ice'}, {r:1,c:4,type:'crate'}, {r:2,c:0,type:'ice'}, {r:2,c:4,type:'giftbox'}, {r:2,c:7,type:'ice'}, {r:3,c:0,type:'crate'}, {r:3,c:4,type:'parcel'}, {r:3,c:7,type:'crate'}, {r:4,c:0,type:'giftbox'}, {r:4,c:4,type:'ice'}, {r:4,c:7,type:'giftbox'}, {r:5,c:0,type:'parcel'}, {r:5,c:4,type:'crate'}, {r:5,c:7,type:'parcel'}, {r:6,c:4,type:'giftbox'}, {r:7,c:4,type:'parcel'},
+  ],
+};
+
 // Input state
 let pointerDown = null; // {x, y, row, col}
 
@@ -953,6 +1444,32 @@ function initGrid() {
   grid = [];
   special = [];
   obstacles = [];
+
+  // Check if this level has a deterministic tutorial grid
+  const tutDef = TUTORIAL_LEVELS[level];
+  if (tutDef && tutDef.grid) {
+    // Use the pre-built tutorial grid
+    for (let r = 0; r < ROWS; r++) {
+      grid[r] = [];
+      special[r] = [];
+      obstacles[r] = [];
+      for (let c = 0; c < COLS; c++) {
+        if (!boardMask[r] || !boardMask[r][c]) {
+          grid[r][c] = -1;
+          special[r][c] = 0;
+          obstacles[r][c] = null;
+          continue;
+        }
+        grid[r][c] = (tutDef.grid[r] && tutDef.grid[r][c] !== undefined) ? tutDef.grid[r][c] : randomType();
+        special[r][c] = 0;
+        obstacles[r][c] = null;
+      }
+    }
+    // Tutorial levels with grids: no obstacles, start guided tutorial
+    startGuidedTutorial();
+    return;
+  }
+
   for (let r = 0; r < ROWS; r++) {
     grid[r] = [];
     special[r] = [];
@@ -975,27 +1492,43 @@ function initGrid() {
   }
   // Place obstacles based on level
   initObstacles();
+  // Start obstacle tutorial if applicable (level 6)
+  if (TUTORIAL_LEVELS[level] && TUTORIAL_LEVELS[level].useHintNearObstacle) {
+    startGuidedTutorial();
+  }
 }
 
 function initObstacles() {
   const cfg = getLevelConfig(level);
-  if (level < 6 && !cfg.obstacleCount) return; // obstacles start at level 6 unless config overrides
 
-  // Use config override or scale automatically
+  // Use hardcoded layout if available
+  if (OBSTACLE_LAYOUTS[level]) {
+    for (const o of OBSTACLE_LAYOUTS[level]) {
+      if (o.r >= ROWS || o.c >= COLS) continue;
+      if (!boardMask[o.r] || !boardMask[o.r][o.c]) continue;
+      const def = OBSTACLE_TYPES[o.type];
+      if (!def) continue;
+      obstacles[o.r][o.c] = { type: o.type, hp: def.maxHp, maxHp: def.maxHp };
+    }
+    return;
+  }
+
+  // Fallback: random placement for levels without a hardcoded layout
+  if (level < 6 && !cfg.obstacleCount) return;
+
   const obstacleCount = cfg.obstacleCount || Math.min(2 + Math.floor((level - 5) / 2), 12);
   const types = Object.keys(OBSTACLE_TYPES);
-  // Use config override or introduce obstacle types gradually
   let availableTypes;
   if (cfg.obstacleTypes) {
     availableTypes = cfg.obstacleTypes;
   } else if (level <= 8) {
-    availableTypes = ['crate'];                          // just crates at first
+    availableTypes = ['crate'];
   } else if (level <= 12) {
-    availableTypes = ['crate', 'ice'];                   // add ice
+    availableTypes = ['crate', 'ice'];
   } else if (level <= 16) {
-    availableTypes = ['crate', 'ice', 'giftbox'];        // add gift boxes
+    availableTypes = ['crate', 'ice', 'giftbox'];
   } else {
-    availableTypes = types;                               // all 4 types including parcels
+    availableTypes = types;
   }
   let placed = 0;
   let attempts = 0;
@@ -1004,7 +1537,7 @@ function initObstacles() {
     const r = 1 + Math.floor(Math.random() * (Math.max(1, ROWS - 2)));
     const c = 1 + Math.floor(Math.random() * (Math.max(1, COLS - 2)));
     if (r >= ROWS || c >= COLS) continue;
-    if (!boardMask[r] || !boardMask[r][c]) continue; // skip voided cells
+    if (!boardMask[r] || !boardMask[r][c]) continue;
     if (obstacles[r][c]) continue;
     const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
     const def = OBSTACLE_TYPES[type];
@@ -1089,8 +1622,7 @@ function shuffleBoard() {
   // Brief animation then unlock
   animations.push(new Animation(400, () => {}, () => {
     locked = false;
-    hintTimer = 0;
-    hintCells = null;
+    clearHint();
   }));
 }
 
@@ -1389,6 +1921,16 @@ function doSwap(r1, c1, r2, c2) {
   if (hasObstacle(r1, c1) || hasObstacle(r2, c2)) {
     selected = null;
     return;
+  }
+  // During guided tutorial, only allow the tutorial swap
+  if (guidedTutorial && !guidedTutorial.done && !isTutorialSwap(r1, c1, r2, c2)) {
+    selected = null;
+    return;
+  }
+  // Mark tutorial swap as done when executed
+  if (guidedTutorial && !guidedTutorial.done && isTutorialSwap(r1, c1, r2, c2)) {
+    guidedTutorial.done = true;
+    guidedTutorial.postTimer = 2.5; // show post-message for 2.5 seconds
   }
   locked = true;
   selected = null;
@@ -3715,13 +4257,13 @@ function restartGame() {
   electricArcs = [];
   shockwaveRings = [];
   flyingTool = null;
-  hintTimer = 0;
-  hintCells = null;
+  clearHint();
   screenShake = { x: 0, y: 0, intensity: 0, decay: 0.88 };
   flashAlpha = 0;
   loveLetterPhase = 0;
   loveLetterTransformed = null;
   loveLetterExploded = null;
+  guidedTutorial = null;
   levelComplete = false;
   levelCompleteToolQueue = [];
   levelCompleteDelay = 0;
@@ -3822,8 +4364,7 @@ canvas.addEventListener('pointerdown', (e) => {
   const pos = getCanvasPos(e);
 
   // Reset hint on any interaction
-  hintTimer = 0;
-  hintCells = null;
+  clearHint();
 
   // Spouse panel intercepts all clicks when open
   if (showSpousePanel) { handleSpousePanelClick(pos.x, pos.y); return; }
@@ -4614,6 +5155,14 @@ function frame(now) {
     return;
   }
 
+  // Update guided tutorial post-message timer
+  if (guidedTutorial && guidedTutorial.done && guidedTutorial.postTimer > 0) {
+    guidedTutorial.postTimer -= dt;
+    if (guidedTutorial.postTimer <= 0) {
+      guidedTutorial = null; // Tutorial fully complete, remove overlay
+    }
+  }
+
   // Countdown timer — only for timer-based levels (stop counting during level complete)
   if (getLevelConfig(level).mode === 'timer' && !gameOver && !locked && !levelComplete && timeLeft > 0) {
     timeLeft -= dt;
@@ -4629,8 +5178,8 @@ function frame(now) {
     sfxGameOver();
   }
 
-  // Hint timer — show hint after inactivity
-  if (!gameOver && !locked && !levelComplete && !paused) {
+  // Hint timer — show hint after inactivity (disabled during guided tutorial)
+  if (!gameOver && !locked && !levelComplete && !paused && !(guidedTutorial && !guidedTutorial.done)) {
     hintTimer += dt;
     if (hintTimer >= HINT_DELAY && !hintCells) {
       hintCells = findHintMove();
@@ -4976,21 +5525,23 @@ function render(time, dt) {
     drawSelectedHighlight(selected.row, selected.col, time);
   }
 
-  // Hint highlight — gentle pulsing glow on hinted cells
-  if (hintCells && !locked && !selected) {
-    const pulse = 0.3 + 0.3 * Math.sin(time * 4);
-    ctx.save();
-    for (const cell of hintCells) {
-      const hx = boardX + cell.col * tileSize + 2;
-      const hy = boardY + cell.row * tileSize + 2;
-      const hw = tileSize - 4;
-      const hh = tileSize - 4;
-      ctx.strokeStyle = `rgba(255, 215, 0, ${pulse})`;
-      ctx.lineWidth = 3;
-      drawRoundedRect(hx, hy, hw, hh, tileSize * 0.15);
-      ctx.stroke();
+  // Hint highlight — nudge animation (partial swap bounce) on hinted cells
+  if (hintCells && !locked && !selected && hintCells.length === 2) {
+    const hNudge = calcSwapNudge(time, hintCells[0], hintCells[1]);
+    for (let i = 0; i < 2; i++) {
+      const cell = hintCells[i];
+      const sign = i === 0 ? 1 : -1;
+      const nx = hNudge.dx * sign;
+      const ny = hNudge.dy * sign;
+      // Only apply override if there's actual movement
+      if (Math.abs(nx) > 0.3 || Math.abs(ny) > 0.3) {
+        const baseX = boardX + cell.col * tileSize;
+        const baseY = boardY + cell.row * tileSize;
+        setOverride(cell.row, cell.col, { x: baseX + nx, y: baseY + ny });
+      } else {
+        clearOverride(cell.row, cell.col);
+      }
     }
-    ctx.restore();
   }
 
   // Draw obstacles on top of tiles
@@ -5000,6 +5551,9 @@ function render(time, dt) {
       if (obs) drawObstacle(r, c, obs);
     }
   }
+
+  // Guided tutorial overlay (darken board, highlight swap cells)
+  drawGuidedTutorial(time);
 
   // Flash overlay on board
   if (flashAlpha > 0.01) {
