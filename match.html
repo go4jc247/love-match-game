@@ -446,7 +446,7 @@ let imagesLoaded = 0;
 let totalImages = 0;
 
 function preloadImages(gems) {
-  const allFiles = [...gems.map(g => g.file), ...TOOLS.map(t => t.file), PINK_HEART_FILE];
+  const allFiles = [...gems.map(g => g.file), ...TOOLS.map(t => t.file), PINK_HEART_FILE, ...OBSTACLE_SPRITE_FILES];
   // Deduplicate
   const unique = [...new Set(allFiles)];
   totalImages = unique.length;
@@ -677,16 +677,85 @@ function spawnSparkles(x, y, color, count) {
   }
 }
 
+// Explosion rings
+let explosionRings = [];
+function spawnExplosionRing(x, y, color, maxRadius) {
+  explosionRings.push({
+    x, y, radius: 0, maxRadius: maxRadius || 80, color: color || '#ff4081',
+    alpha: 1, lineWidth: 4, age: 0, life: 0.5
+  });
+}
+
+// Fire particles
+let fireParticles = [];
+function spawnFireParticles(x, y, count) {
+  const colors = ['#ff4500', '#ff6600', '#ffaa00', '#ffcc00', '#ff2200'];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 40 + Math.random() * 100;
+    fireParticles.push({
+      x, y,
+      vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 30,
+      vy: Math.sin(angle) * speed - 60 - Math.random() * 40,
+      size: 3 + Math.random() * 6,
+      alpha: 1,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 0.3 + Math.random() * 0.4,
+      age: 0,
+      wobble: Math.random() * Math.PI * 2,
+      wobbleSpeed: 8 + Math.random() * 6,
+    });
+  }
+}
+
+// Electric arcs
+let electricArcs = [];
+function spawnElectricArc(x1, y1, x2, y2, color, duration) {
+  const numSegments = 6 + Math.floor(Math.random() * 3);
+  const segments = [];
+  for (let i = 0; i <= numSegments; i++) {
+    const t = i / numSegments;
+    const px = x1 + (x2 - x1) * t;
+    const py = y1 + (y2 - y1) * t;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const nx = -dy / (len || 1), ny = dx / (len || 1);
+    const offset = (i === 0 || i === numSegments) ? 0 : (Math.random() - 0.5) * 20;
+    segments.push({ x: px + nx * offset, y: py + ny * offset });
+  }
+  electricArcs.push({
+    x1, y1, x2, y2, color: color || '#00e5ff',
+    alpha: 1, segments, life: duration || 0.4, age: 0,
+    numSegments
+  });
+}
+
+// Shockwave rings
+let shockwaveRings = [];
+function spawnShockwave(x, y) {
+  shockwaveRings.push({
+    x, y, radius: 0, maxRadius: 120, alpha: 0.8,
+    lineWidth: 8, age: 0, life: 0.3
+  });
+}
+
 // Flying tool (fly-to animation)
 let flyingTool = null; // { file, x, y, scale, alpha }
 
 // Obstacles
 let obstacles = [];
 const OBSTACLE_TYPES = {
-  lockedHeart: { maxHp: 2, name: 'Locked Heart', color1: '#ffd700', color2: '#b8860b' },
-  roseVine:    { maxHp: 3, name: 'Rose Vine', color1: '#228b22', color2: '#8b4513' },
-  yarnTangle:  { maxHp: 1, name: 'Yarn Tangle', color1: '#ff69b4', color2: '#ff1493' },
+  ice:     { maxHp: 3, damageMode: 'matchInside', name: 'Ice Block',       color1: '#87ceeb', color2: '#4fc3f7',
+             sprites: ['icons/obstacle-ice-1.png','icons/obstacle-ice-2.png','icons/obstacle-ice-3.png'] },
+  giftbox: { maxHp: 3, damageMode: 'adjacent',    name: 'Gift Box',        color1: '#f8bbd0', color2: '#f06292',
+             sprites: ['icons/obstacle-giftbox-1.png','icons/obstacle-giftbox-2.png','icons/obstacle-giftbox-3.png'] },
+  parcel:  { maxHp: 3, damageMode: 'adjacent',    name: 'Love Letter',     color1: '#ffe0b2', color2: '#ffab91',
+             sprites: ['icons/obstacle-parcel-1.png','icons/obstacle-parcel-2.png','icons/obstacle-parcel-3.png'] },
+  crate:   { maxHp: 3, damageMode: 'toolOnly',    name: 'Wooden Crate',    color1: '#a1887f', color2: '#8d6e63',
+             sprites: ['icons/obstacle-crate-1.png','icons/obstacle-crate-2.png','icons/obstacle-crate-3.png'] },
 };
+// Collect all obstacle sprite files for preloading
+const OBSTACLE_SPRITE_FILES = Object.values(OBSTACLE_TYPES).flatMap(t => t.sprites);
 
 // Input state
 let pointerDown = null; // {x, y, row, col}
@@ -729,10 +798,16 @@ function initObstacles() {
   // Scale obstacle count: starts at 2, grows with level, caps at 12
   const obstacleCount = Math.min(2 + Math.floor((level - 5) / 2), 12);
   const types = Object.keys(OBSTACLE_TYPES);
-  // Early obstacle levels only use easier types
-  let availableTypes = types;
+  // Introduce obstacle types gradually
+  let availableTypes;
   if (level <= 8) {
-    availableTypes = types.filter(t => OBSTACLE_TYPES[t].maxHp <= 2);
+    availableTypes = ['crate'];                          // just crates at first
+  } else if (level <= 12) {
+    availableTypes = ['crate', 'ice'];                   // add ice
+  } else if (level <= 16) {
+    availableTypes = ['crate', 'ice', 'giftbox'];        // add gift boxes
+  } else {
+    availableTypes = types;                               // all 4 types including parcels
   }
   let placed = 0;
   let attempts = 0;
@@ -776,6 +851,15 @@ function wouldMatch(row, col, type) {
 
 function hasObstacle(r, c) {
   return obstacles[r] && obstacles[r][c] !== null && obstacles[r][c] !== undefined;
+}
+
+// Can this cell participate in match detection?
+// Ice obstacles: gem is visible and matchable (but not swappable)
+// Other obstacles: gem is hidden, not matchable
+function isMatchable(r, c) {
+  if (grid[r][c] < 0) return false;
+  if (!hasObstacle(r, c)) return true;
+  return obstacles[r][c].type === 'ice'; // ice gem is visible and matchable
 }
 
 // Shuffle all non-special, non-obstacle active tiles until a valid move exists
@@ -850,13 +934,13 @@ function findHintMove() {
 function findMatches() {
   const matched = new Set();
 
-  // Horizontal (skip obstacle cells)
+  // Horizontal (skip non-matchable cells; ice is matchable)
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c <= COLS - 3; c++) {
       const t = grid[r][c];
-      if (t < 0 || hasObstacle(r, c)) continue;
+      if (!isMatchable(r, c)) continue;
       let len = 1;
-      while (c + len < COLS && grid[r][c + len] === t && !hasObstacle(r, c + len)) len++;
+      while (c + len < COLS && grid[r][c + len] === t && isMatchable(r, c + len)) len++;
       if (len >= 3) {
         for (let i = 0; i < len; i++) matched.add(r * COLS + c + i);
       }
@@ -864,13 +948,13 @@ function findMatches() {
     }
   }
 
-  // Vertical (skip obstacle cells)
+  // Vertical (skip non-matchable cells; ice is matchable)
   for (let c = 0; c < COLS; c++) {
     for (let r = 0; r <= ROWS - 3; r++) {
       const t = grid[r][c];
-      if (t < 0 || hasObstacle(r, c)) continue;
+      if (!isMatchable(r, c)) continue;
       let len = 1;
-      while (r + len < ROWS && grid[r + len][c] === t && !hasObstacle(r + len, c)) len++;
+      while (r + len < ROWS && grid[r + len][c] === t && isMatchable(r + len, c)) len++;
       if (len >= 3) {
         for (let i = 0; i < len; i++) matched.add((r + i) * COLS + c);
       }
@@ -878,14 +962,14 @@ function findMatches() {
     }
   }
 
-  // 2x2 squares (skip obstacle cells)
+  // 2x2 squares (skip non-matchable cells; ice is matchable)
   for (let r = 0; r <= ROWS - 2; r++) {
     for (let c = 0; c <= COLS - 2; c++) {
       const t = grid[r][c];
-      if (t < 0 || hasObstacle(r, c)) continue;
-      if (grid[r][c+1] === t && !hasObstacle(r, c+1) &&
-          grid[r+1][c] === t && !hasObstacle(r+1, c) &&
-          grid[r+1][c+1] === t && !hasObstacle(r+1, c+1)) {
+      if (!isMatchable(r, c)) continue;
+      if (grid[r][c+1] === t && isMatchable(r, c+1) &&
+          grid[r+1][c] === t && isMatchable(r+1, c) &&
+          grid[r+1][c+1] === t && isMatchable(r+1, c+1)) {
         matched.add(r * COLS + c);
         matched.add(r * COLS + c + 1);
         matched.add((r+1) * COLS + c);
@@ -908,15 +992,15 @@ function getMatchGroups() {
   const results = [];
   const claimed = new Set(); // prevent double-counting cells
 
-  // First pass: find all horizontal and vertical runs
+  // First pass: find all horizontal and vertical runs (respecting obstacle matchability)
   const hRuns = []; // {row, startCol, len, type}
   for (let r = 0; r < ROWS; r++) {
     let c = 0;
     while (c < COLS) {
+      if (!isMatchable(r, c)) { c++; continue; }
       const t = grid[r][c];
-      if (t < 0) { c++; continue; }
       let len = 1;
-      while (c + len < COLS && grid[r][c + len] === t) len++;
+      while (c + len < COLS && grid[r][c + len] === t && isMatchable(r, c + len)) len++;
       if (len >= 3) hRuns.push({ row: r, col: c, len, type: t });
       c += len;
     }
@@ -926,10 +1010,10 @@ function getMatchGroups() {
   for (let c = 0; c < COLS; c++) {
     let r = 0;
     while (r < ROWS) {
+      if (!isMatchable(r, c)) { r++; continue; }
       const t = grid[r][c];
-      if (t < 0) { r++; continue; }
       let len = 1;
-      while (r + len < ROWS && grid[r + len][c] === t) len++;
+      while (r + len < ROWS && grid[r + len][c] === t && isMatchable(r + len, c)) len++;
       if (len >= 3) vRuns.push({ row: r, col: c, len, type: t });
       r += len;
     }
@@ -1038,8 +1122,9 @@ function getMatchGroups() {
   // Detect 2x2 squares (cells not already claimed)
   for (let r = 0; r <= ROWS - 2; r++) {
     for (let c = 0; c <= COLS - 2; c++) {
+      if (!isMatchable(r, c)) continue;
       const t = grid[r][c];
-      if (t < 0) continue;
+      if (!isMatchable(r, c+1) || !isMatchable(r+1, c) || !isMatchable(r+1, c+1)) continue;
       if (grid[r][c+1] !== t || grid[r+1][c] !== t || grid[r+1][c+1] !== t) continue;
       const cells = [
         { row: r, col: c }, { row: r, col: c+1 },
@@ -1312,28 +1397,46 @@ function processMatches() {
     );
   });
 
-  // Animate removal
-  const matchedArr = [];
+  // Split matched cells: ice obstacles get damaged (gem stays), normal cells get cleared
+  const iceHits = [];    // cells with ice obstacle — damage ice, keep gem
+  const normalClears = []; // cells without obstacle — remove as normal
   allMatched.forEach(k => {
     const [r, c] = k.split(',').map(Number);
-    matchedArr.push({ row: r, col: c });
-    removingTiles.add(k);
+    if (hasObstacle(r, c) && obstacles[r][c].type === 'ice') {
+      iceHits.push({ row: r, col: c });
+    } else {
+      normalClears.push({ row: r, col: c });
+    }
   });
+
+  // The matchedArr is ALL matched cells (used for adjacent obstacle damage)
+  const matchedArr = [...iceHits, ...normalClears];
+
+  // Only animate removal for normal clears (ice cells stay)
+  for (const { row, col } of normalClears) {
+    removingTiles.add(tileKey(row, col));
+  }
 
   animations.push(new Animation(MATCH_DUR, (t) => {
     const et = easeOut(t);
-    for (const { row, col } of matchedArr) {
+    for (const { row, col } of normalClears) {
       setOverride(row, col, { scale: 1 - et * 0.8, alpha: 1 - et });
     }
   }, () => {
-    // Remove tiles from grid
-    for (const { row, col } of matchedArr) {
+    // Remove normal tiles from grid
+    for (const { row, col } of normalClears) {
       grid[row][col] = -1;
       clearOverride(row, col);
       removingTiles.delete(tileKey(row, col));
     }
+    // Damage ice obstacles (gem stays, ice takes hit)
+    for (const { row, col } of iceHits) {
+      damageIceObstacle(row, col);
+    }
     // Spawn tools ON THE BOARD from special matches
     for (const spawn of toolSpawns) {
+      // Don't place tools on obstacle cells
+      if (hasObstacle(spawn.row, spawn.col)) continue;
       // Place the special tool tile at the spawn position
       // Keep the gem type so it has a "color" identity, but mark it special
       if (grid[spawn.row][spawn.col] === -1) {
@@ -1351,31 +1454,95 @@ function processMatches() {
         });
       }
     }
-    // Damage adjacent obstacles
-    damageAdjacentObstacles(matchedArr);
+    // Damage adjacent obstacles (only 'adjacent' mode obstacles take damage from this)
+    damageAdjacentObstacles(normalClears);
     // Apply gravity
     applyGravity();
   }));
 }
 
-function damageObstacle(r, c) {
+function damageObstacle(r, c, damageType) {
   if (!obstacles[r] || !obstacles[r][c]) return;
   const obs = obstacles[r][c];
+  const def = OBSTACLE_TYPES[obs.type];
+
+  // Check if this obstacle accepts this damage type
+  if (damageType === 'match') {
+    // 'adjacent' accepts match damage, 'toolOnly' and 'matchInside' do NOT
+    // (matchInside ice is handled separately via ice match logic in processMatches)
+    if (def.damageMode !== 'adjacent') return;
+  }
+  // 'tool' damage is always accepted by all obstacle types
+
   obs.hp--;
   if (obs.hp <= 0) {
     obstacles[r][c] = null;
-    // Break effect
+    // Break effect — sparkles + shake
     spawnSparkles(
       boardX + c * tileSize + tileSize / 2,
       boardY + r * tileSize + tileSize / 2,
-      OBSTACLE_TYPES[obs.type].color1, 6
+      def.color1, 8
     );
-    triggerScreenShake(2);
+    triggerScreenShake(3);
     scorePopups.push({
       x: boardX + c * tileSize + tileSize / 2,
       y: boardY + r * tileSize + tileSize / 2,
       text: 'Free!', alpha: 1, dy: 0,
     });
+    // Gem reveal animation — grow in from scale 0
+    setOverride(r, c, { scale: 0, alpha: 0.5 });
+    animations.push(new Animation(300, (t) => {
+      const et = easeOutBounce(t);
+      setOverride(r, c, { scale: et, alpha: 0.5 + et * 0.5 });
+    }, () => {
+      clearOverride(r, c);
+    }));
+  } else {
+    // Damage feedback — brief shake on the obstacle
+    spawnSparkles(
+      boardX + c * tileSize + tileSize / 2,
+      boardY + r * tileSize + tileSize / 2,
+      def.color1, 3
+    );
+  }
+}
+
+// Ice-specific damage: called from processMatches when ice gem is part of a match
+// This bypasses normal damageMode check since ice match logic is special
+function damageIceObstacle(r, c) {
+  if (!obstacles[r] || !obstacles[r][c]) return;
+  const obs = obstacles[r][c];
+  if (obs.type !== 'ice') return;
+  const def = OBSTACLE_TYPES[obs.type];
+
+  obs.hp--;
+  if (obs.hp <= 0) {
+    obstacles[r][c] = null;
+    spawnSparkles(
+      boardX + c * tileSize + tileSize / 2,
+      boardY + r * tileSize + tileSize / 2,
+      def.color1, 8
+    );
+    triggerScreenShake(3);
+    scorePopups.push({
+      x: boardX + c * tileSize + tileSize / 2,
+      y: boardY + r * tileSize + tileSize / 2,
+      text: 'Free!', alpha: 1, dy: 0,
+    });
+    // Gem is already there and visible — just a brief flash
+    setOverride(r, c, { scale: 1.2 });
+    animations.push(new Animation(200, (t) => {
+      const et = easeOut(t);
+      setOverride(r, c, { scale: 1.2 - et * 0.2 });
+    }, () => {
+      clearOverride(r, c);
+    }));
+  } else {
+    spawnSparkles(
+      boardX + c * tileSize + tileSize / 2,
+      boardY + r * tileSize + tileSize / 2,
+      def.color1, 3
+    );
   }
 }
 
@@ -1389,7 +1556,7 @@ function damageAdjacentObstacles(clearedCells) {
         const k = tileKey(nr, nc);
         if (!damaged.has(k) && obstacles[nr] && obstacles[nr][nc]) {
           damaged.add(k);
-          damageObstacle(nr, nc);
+          damageObstacle(nr, nc, 'match');
         }
       }
     }
@@ -1612,6 +1779,118 @@ function updateAndDrawSparkles(dt) {
   ctx.restore();
 }
 
+// ── Update and Draw New Particle Effects ──
+function updateAndDrawExplosionRings(dt) {
+  if (explosionRings.length === 0) return;
+  ctx.save();
+  for (let i = explosionRings.length - 1; i >= 0; i--) {
+    const r = explosionRings[i];
+    r.age += dt;
+    if (r.age >= r.life) { explosionRings.splice(i, 1); continue; }
+    const t = r.age / r.life;
+    r.radius = r.maxRadius * easeOut(t);
+    r.alpha = 1 - t;
+    ctx.save();
+    ctx.globalAlpha = r.alpha;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = r.lineWidth * (1 - t * 0.6);
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function updateAndDrawFireParticles(dt) {
+  if (fireParticles.length === 0) return;
+  ctx.save();
+  for (let i = fireParticles.length - 1; i >= 0; i--) {
+    const p = fireParticles[i];
+    p.age += dt;
+    if (p.age >= p.life) { fireParticles.splice(i, 1); continue; }
+    p.x += p.vx * dt + Math.sin(p.wobble + p.age * p.wobbleSpeed) * 1.5;
+    p.y += p.vy * dt;
+    p.vy -= 80 * dt; // drift upward
+    p.alpha = 1 - (p.age / p.life);
+    p.size *= 0.98;
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function updateAndDrawElectricArcs(dt) {
+  if (electricArcs.length === 0) return;
+  ctx.save();
+  for (let i = electricArcs.length - 1; i >= 0; i--) {
+    const arc = electricArcs[i];
+    arc.age += dt;
+    if (arc.age >= arc.life) { electricArcs.splice(i, 1); continue; }
+    arc.alpha = 1 - (arc.age / arc.life);
+    // Re-randomize segments for flicker
+    for (let j = 1; j < arc.segments.length - 1; j++) {
+      const t = j / arc.numSegments;
+      const px = arc.x1 + (arc.x2 - arc.x1) * t;
+      const py = arc.y1 + (arc.y2 - arc.y1) * t;
+      const dx = arc.x2 - arc.x1, dy = arc.y2 - arc.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const nx = -dy / (len || 1), ny = dx / (len || 1);
+      const offset = (Math.random() - 0.5) * 20;
+      arc.segments[j] = { x: px + nx * offset, y: py + ny * offset };
+    }
+    ctx.save();
+    ctx.globalAlpha = arc.alpha;
+    ctx.strokeStyle = arc.color;
+    ctx.lineWidth = 2 + Math.random() * 2;
+    ctx.shadowColor = arc.color;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(arc.segments[0].x, arc.segments[0].y);
+    for (let j = 1; j < arc.segments.length; j++) {
+      ctx.lineTo(arc.segments[j].x, arc.segments[j].y);
+    }
+    ctx.stroke();
+    // Draw a thinner bright core
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function updateAndDrawShockwaves(dt) {
+  if (shockwaveRings.length === 0) return;
+  ctx.save();
+  for (let i = shockwaveRings.length - 1; i >= 0; i--) {
+    const s = shockwaveRings[i];
+    s.age += dt;
+    if (s.age >= s.life) { shockwaveRings.splice(i, 1); continue; }
+    const t = s.age / s.life;
+    s.radius = s.maxRadius * easeOut(t);
+    s.alpha = 0.8 * (1 - t);
+    ctx.save();
+    ctx.globalAlpha = s.alpha;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = s.lineWidth * (1 - t * 0.5);
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 // ── Love Letter: Clear Everything ──
 let loveLetterPhase = 0;  // 0=inactive, 1=transforming, 2=exploding
 let loveLetterTimer = 0;
@@ -1737,14 +2016,59 @@ function useTool(toolNum, row, col) {
   }
 }
 
+// Chain-activate special tools one at a time with delays
+function activatePendingTools(queue, callback) {
+  if (!queue || queue.length === 0) {
+    callback();
+    return;
+  }
+  const next = queue.shift();
+  // Only activate if the special is still there (wasn't already cleared)
+  if (special[next.row] && special[next.row][next.col] > 0) {
+    const toolNum = special[next.row][next.col];
+    special[next.row][next.col] = 0;
+    // Bright glow pulse on the tile before it fires
+    const tx = boardX + next.col * tileSize + tileSize / 2;
+    const ty = boardY + next.row * tileSize + tileSize / 2;
+    animations.push(new Animation(400, (t) => {
+      // White glow pulse: scale up then back
+      const pulse = Math.sin(t * Math.PI);
+      setOverride(next.row, next.col, { scale: 1 + pulse * 0.4 });
+      // Spawn sparkles at peak
+      if (t > 0.45 && t < 0.55) {
+        spawnSparkles(tx, ty, '#ffffff', 4);
+      }
+    }, () => {
+      clearOverride(next.row, next.col);
+      triggerFlash(0.15);
+      activateSpecialOnBoard(toolNum, next.row, next.col);
+      // After that tool resolves, continue with remaining queue
+      // 0.4s delay between activations
+      animations.push(new Animation(100, () => {}, () => {
+        activatePendingTools(queue, callback);
+      }));
+    }));
+  } else {
+    activatePendingTools(queue, callback);
+  }
+}
+
 // Tool 1: Bomb — Explodes 3x3 area
 function useBomb(row, col) {
   locked = true;
   const targets = [];
+  const obstacleHits = [];
+  const pendingToolActivations = [];
   for (let dr = -1; dr <= 1; dr++) {
     for (let dc = -1; dc <= 1; dc++) {
       const r = row + dr, c = col + dc;
-      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+      if (hasObstacle(r, c)) {
+        obstacleHits.push({ row: r, col: c });
+      } else if (grid[r][c] >= 0) {
+        if (special[r] && special[r][c] > 0 && !(r === row && c === col)) {
+          pendingToolActivations.push({ row: r, col: c, toolNum: special[r][c] });
+        }
         targets.push({ row: r, col: c });
       }
     }
@@ -1758,23 +2082,55 @@ function useBomb(row, col) {
     text: '+' + pts, alpha: 1, dy: 0,
   });
 
-  // Animate: scale up then shrink + fade
   for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
 
-  animations.push(new Animation(300, (t) => {
-    const et = easeOut(t);
-    for (const tgt of targets) {
-      const scale = t < 0.3 ? 1 + et * 0.3 : 1.3 - (et - 0.3) * 1.3;
-      setOverride(tgt.row, tgt.col, { scale: Math.max(0, scale), alpha: 1 - et });
-    }
+  const cx = boardX + col * tileSize + tileSize / 2;
+  const cy = boardY + row * tileSize + tileSize / 2;
+
+  // Phase 1 (0-150ms): Bomb grows at center, screen dims
+  animations.push(new Animation(150, (t) => {
+    // Pulse center tile bigger
+    setOverride(row, col, { scale: 1 + easeOut(t) * 0.5 });
   }, () => {
-    for (const t of targets) {
-      grid[t.row][t.col] = -1;
-      clearOverride(t.row, t.col);
-      removingTiles.delete(tileKey(t.row, t.col));
-      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
-    }
-    applyGravity();
+    clearOverride(row, col);
+    // Phase 2 (150-300ms): Flash, explosion ring, fire burst
+    triggerFlash(0.5);
+    triggerScreenShake(8);
+    spawnExplosionRing(cx, cy, '#ff4081', tileSize * 2);
+    spawnFireParticles(cx, cy, 20);
+    spawnShockwave(cx, cy);
+
+    animations.push(new Animation(250, (t) => {
+      const et = easeOut(t);
+      for (const tgt of targets) {
+        // Stagger by distance from center
+        const dist = Math.abs(tgt.row - row) + Math.abs(tgt.col - col);
+        const delay = dist * 0.15;
+        const lt = Math.max(0, Math.min(1, (t - delay) / (1 - delay)));
+        const s = lt < 0.2 ? 1 + lt * 2 : Math.max(0, 1.4 - (lt - 0.2) * 1.75);
+        setOverride(tgt.row, tgt.col, { scale: s, alpha: 1 - lt });
+      }
+    }, () => {
+      for (const t of targets) {
+        grid[t.row][t.col] = -1;
+        clearOverride(t.row, t.col);
+        removingTiles.delete(tileKey(t.row, t.col));
+        const tx = boardX + t.col * tileSize + tileSize / 2;
+        const ty = boardY + t.row * tileSize + tileSize / 2;
+        spawnHeartBurst(tx, ty, 2);
+        // Each target gets a small explosion ring staggered by distance
+        const dist = Math.abs(t.row - row) + Math.abs(t.col - col);
+        setTimeout(() => spawnExplosionRing(tx, ty, '#ff6b8a', tileSize * 0.8), dist * 40);
+      }
+      // Damage obstacles hit by bomb (tool damage)
+      for (const h of obstacleHits) {
+        damageObstacle(h.row, h.col, 'tool');
+      }
+      // Chain-activate specials hit by the bomb
+      activatePendingTools(pendingToolActivations, () => {
+        applyGravity();
+      });
+    }));
   }));
 }
 
@@ -1782,17 +2138,33 @@ function useBomb(row, col) {
 function useLightning(row, col) {
   locked = true;
   const targets = [];
+  const obstacleHits = [];
+  const pendingToolActivations = [];
   const seen = new Set();
   for (let c = 0; c < COLS; c++) {
-    if (grid[row][c] >= 0 && !seen.has(tileKey(row, c))) {
+    const k = tileKey(row, c);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (hasObstacle(row, c)) {
+      obstacleHits.push({ row, col: c });
+    } else if (grid[row][c] >= 0) {
+      if (special[row] && special[row][c] > 0 && c !== col) {
+        pendingToolActivations.push({ row, col: c, toolNum: special[row][c] });
+      }
       targets.push({ row, col: c });
-      seen.add(tileKey(row, c));
     }
   }
   for (let r = 0; r < ROWS; r++) {
-    if (grid[r][col] >= 0 && !seen.has(tileKey(r, col))) {
+    const k = tileKey(r, col);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (hasObstacle(r, col)) {
+      obstacleHits.push({ row: r, col });
+    } else if (grid[r][col] >= 0) {
+      if (special[r] && special[r][col] > 0) {
+        pendingToolActivations.push({ row: r, col, toolNum: special[r][col] });
+      }
       targets.push({ row: r, col });
-      seen.add(tileKey(r, col));
     }
   }
 
@@ -1806,9 +2178,26 @@ function useLightning(row, col) {
 
   for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
 
+  const cx = boardX + col * tileSize + tileSize / 2;
+  const cy = boardY + row * tileSize + tileSize / 2;
+
+  // Spawn electric arcs along row and column
+  const rowLeft = boardX + tileSize / 2;
+  const rowRight = boardX + (COLS - 1) * tileSize + tileSize / 2;
+  const colTop = boardY + tileSize / 2;
+  const colBottom = boardY + (ROWS - 1) * tileSize + tileSize / 2;
+  spawnElectricArc(cx, cy, rowLeft, cy, '#00e5ff', 0.5);
+  spawnElectricArc(cx, cy, rowRight, cy, '#00e5ff', 0.5);
+  spawnElectricArc(cx, cy, cx, colTop, '#00e5ff', 0.5);
+  spawnElectricArc(cx, cy, cx, colBottom, '#00e5ff', 0.5);
+  triggerFlash(0.3);
+  triggerScreenShake(6);
+
   animations.push(new Animation(350, (t) => {
     const et = easeOut(t);
     for (const tgt of targets) {
+      // Flash white then fade
+      const flash = t < 0.2 ? 1 : 0;
       setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
     }
   }, () => {
@@ -1816,8 +2205,17 @@ function useLightning(row, col) {
       grid[t.row][t.col] = -1;
       clearOverride(t.row, t.col);
       removingTiles.delete(tileKey(t.row, t.col));
+      // Cyan/white sparkles at each destroyed cell
+      const tx = boardX + t.col * tileSize + tileSize / 2;
+      const ty = boardY + t.row * tileSize + tileSize / 2;
+      spawnSparkles(tx, ty, Math.random() < 0.5 ? '#00e5ff' : '#ffffff', 4);
     }
-    applyGravity();
+    for (const h of obstacleHits) {
+      damageObstacle(h.row, h.col, 'tool');
+    }
+    activatePendingTools(pendingToolActivations, () => {
+      applyGravity();
+    });
   }));
 }
 
@@ -1828,9 +2226,20 @@ function useRainbowStar(row, col) {
   if (type < 0) { locked = false; toolInventory[3]++; return; }
 
   const targets = [];
+  const obstacleHits = [];
+  const pendingToolActivations = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      if (grid[r][c] === type) targets.push({ row: r, col: c });
+      if (grid[r][c] === type) {
+        if (hasObstacle(r, c)) {
+          obstacleHits.push({ row: r, col: c });
+        } else {
+          if (special[r] && special[r][c] > 0 && !(r === row && c === col)) {
+            pendingToolActivations.push({ row: r, col: c, toolNum: special[r][c] });
+          }
+          targets.push({ row: r, col: c });
+        }
+      }
     }
   }
 
@@ -1844,19 +2253,54 @@ function useRainbowStar(row, col) {
 
   for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
 
-  animations.push(new Animation(400, (t) => {
-    const et = easeOut(t);
-    for (const tgt of targets) {
-      setOverride(tgt.row, tgt.col, { scale: 1 - et, alpha: 1 - et });
-    }
+  const cx = boardX + col * tileSize + tileSize / 2;
+  const cy = boardY + row * tileSize + tileSize / 2;
+  const gemColor = TILE_TYPES[type] ? TILE_TYPES[type].bg1 : '#ff4081';
+
+  // Phase 1 (0-250ms): Star spins and grows with rainbow glow at center
+  animations.push(new Animation(250, (t) => {
+    const pulse = 1 + Math.sin(t * Math.PI * 4) * 0.3;
+    setOverride(row, col, { scale: pulse });
   }, () => {
-    for (const t of targets) {
-      grid[t.row][t.col] = -1;
-      clearOverride(t.row, t.col);
-      removingTiles.delete(tileKey(t.row, t.col));
-      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
+    clearOverride(row, col);
+
+    // Phase 2: Colored rays shoot from center to each matching gem (lines drawn via sparkle trails)
+    for (const tgt of targets) {
+      if (tgt.row === row && tgt.col === col) continue;
+      const tx = boardX + tgt.col * tileSize + tileSize / 2;
+      const ty = boardY + tgt.row * tileSize + tileSize / 2;
+      // Spawn sparkle trail from center to target
+      const steps = 4;
+      for (let i = 0; i < steps; i++) {
+        const sx = cx + (tx - cx) * (i / steps);
+        const sy = cy + (ty - cy) * (i / steps);
+        spawnSparkles(sx, sy, gemColor, 2);
+      }
     }
-    applyGravity();
+
+    // Phase 3: Each gem bursts into confetti
+    animations.push(new Animation(400, (t) => {
+      const et = easeOut(t);
+      for (const tgt of targets) {
+        setOverride(tgt.row, tgt.col, { scale: 1 - et, alpha: 1 - et });
+      }
+    }, () => {
+      for (const t of targets) {
+        grid[t.row][t.col] = -1;
+        clearOverride(t.row, t.col);
+        removingTiles.delete(tileKey(t.row, t.col));
+        const tx = boardX + t.col * tileSize + tileSize / 2;
+        const ty = boardY + t.row * tileSize + tileSize / 2;
+        spawnSparkles(tx, ty, gemColor, 8);
+        spawnHeartBurst(tx, ty, 2);
+      }
+      for (const h of obstacleHits) {
+        damageObstacle(h.row, h.col, 'tool');
+      }
+      activatePendingTools(pendingToolActivations, () => {
+        applyGravity();
+      });
+    }));
   }));
 }
 
@@ -2008,14 +2452,15 @@ function usePotion(row, col) {
   const r2 = Math.min(row, ROWS - 2);
   const c2 = Math.min(col, COLS - 2);
 
+  const cells = [];
   for (let dr = 0; dr <= 1; dr++) {
     for (let dc = 0; dc <= 1; dc++) {
-      grid[r2 + dr][c2 + dc] = type;
+      if (!hasObstacle(r2 + dr, c2 + dc)) {
+        grid[r2 + dr][c2 + dc] = type;
+        cells.push({ row: r2 + dr, col: c2 + dc });
+      }
     }
   }
-
-  // Flash animation
-  const cells = [{row:r2,col:c2},{row:r2,col:c2+1},{row:r2+1,col:c2},{row:r2+1,col:c2+1}];
   animations.push(new Animation(300, (t) => {
     const pulse = Math.sin(t * Math.PI * 3);
     for (const c of cells) {
@@ -2030,6 +2475,12 @@ function usePotion(row, col) {
 // Tool 7: Magic Wand — Removes any single tile
 function useMagicWand(row, col) {
   locked = true;
+  // Magic wand can target obstacles directly
+  if (hasObstacle(row, col)) {
+    damageObstacle(row, col, 'tool');
+    locked = false;
+    return;
+  }
   if (grid[row][col] < 0) { locked = false; toolInventory[7]++; return; }
 
   score += 20;
@@ -2040,14 +2491,31 @@ function useMagicWand(row, col) {
   });
 
   removingTiles.add(tileKey(row, col));
+  const tx = boardX + col * tileSize + tileSize / 2;
+  const ty = boardY + row * tileSize + tileSize / 2;
+
+  // Magic sparkle trail to target then star-burst
+  const wandX = boardX + COLS * tileSize / 2;
+  const wandY = boardY + ROWS * tileSize + tileSize;
+  const trailSteps = 5;
+  for (let i = 0; i < trailSteps; i++) {
+    const sx = wandX + (tx - wandX) * (i / trailSteps);
+    const sy = wandY + (ty - wandY) * (i / trailSteps);
+    setTimeout(() => spawnSparkles(sx, sy, '#e040ff', 3), i * 30);
+  }
+  triggerFlash(0.15);
+
   animations.push(new Animation(250, (t) => {
     const et = easeOut(t);
-    setOverride(row, col, { scale: 1 + et * 0.3, alpha: 1 - et });
+    const pulse = Math.sin(t * Math.PI * 6) * 0.2;
+    setOverride(row, col, { scale: 1 + et * 0.4 + pulse, alpha: 1 - et });
   }, () => {
     grid[row][col] = -1;
     clearOverride(row, col);
     removingTiles.delete(tileKey(row, col));
-    spawnHeartBurst(boardX + col * tileSize + tileSize / 2, boardY + row * tileSize + tileSize / 2, 5);
+    spawnSparkles(tx, ty, '#e040ff', 12);
+    spawnSparkles(tx, ty, '#ffffff', 6);
+    spawnHeartBurst(tx, ty, 5);
     applyGravity();
   }));
 }
@@ -2082,21 +2550,43 @@ function useTreasureChest(row, col) {
 function useSlingshot(row, col) {
   locked = true;
   const targets = [];
+  const obstacleHits = [];
+  const pendingToolActivations = [];
   const seen = new Set();
 
   // Both diagonals through (row, col)
   for (let d = -Math.max(ROWS, COLS); d <= Math.max(ROWS, COLS); d++) {
     // Top-left to bottom-right
     let r = row + d, c = col + d;
-    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
       const k = tileKey(r, c);
-      if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+      if (!seen.has(k)) {
+        seen.add(k);
+        if (hasObstacle(r, c)) {
+          obstacleHits.push({ row: r, col: c });
+        } else if (grid[r][c] >= 0) {
+          if (special[r] && special[r][c] > 0 && !(r === row && c === col)) {
+            pendingToolActivations.push({ row: r, col: c, toolNum: special[r][c] });
+          }
+          targets.push({ row: r, col: c });
+        }
+      }
     }
     // Top-right to bottom-left
     r = row + d; c = col - d;
-    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
       const k = tileKey(r, c);
-      if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+      if (!seen.has(k)) {
+        seen.add(k);
+        if (hasObstacle(r, c)) {
+          obstacleHits.push({ row: r, col: c });
+        } else if (grid[r][c] >= 0) {
+          if (special[r] && special[r][c] > 0 && !(r === row && c === col)) {
+            pendingToolActivations.push({ row: r, col: c, toolNum: special[r][c] });
+          }
+          targets.push({ row: r, col: c });
+        }
+      }
     }
   }
 
@@ -2110,39 +2600,83 @@ function useSlingshot(row, col) {
 
   for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
 
-  animations.push(new Animation(350, (t) => {
+  const cx = boardX + col * tileSize + tileSize / 2;
+  const cy = boardY + row * tileSize + tileSize / 2;
+
+  // Sort targets by distance for staggered animation
+  const sortedTargets = [...targets].sort((a, b) => {
+    const dA = Math.abs(a.row - row) + Math.abs(a.col - col);
+    const dB = Math.abs(b.row - row) + Math.abs(b.col - col);
+    return dA - dB;
+  });
+
+  triggerScreenShake(4);
+
+  // Animate projectile flying along diagonals with staggered tile hits
+  animations.push(new Animation(450, (t) => {
     const et = easeOut(t);
-    for (const tgt of targets) {
-      setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+    for (let i = 0; i < sortedTargets.length; i++) {
+      const tgt = sortedTargets[i];
+      const dist = Math.abs(tgt.row - row) + Math.abs(tgt.col - col);
+      const maxDist = Math.max(ROWS, COLS);
+      const delay = (dist / maxDist) * 0.5;
+      const lt = Math.max(0, Math.min(1, (t - delay) / (1 - delay)));
+      if (lt > 0) {
+        setOverride(tgt.row, tgt.col, { scale: 1 - lt * 0.8, alpha: 1 - lt });
+        // Spawn dust on first frame of activation
+        if (lt < 0.15 && lt > 0) {
+          const tx = boardX + tgt.col * tileSize + tileSize / 2;
+          const ty = boardY + tgt.row * tileSize + tileSize / 2;
+          spawnSparkles(tx, ty, '#c8a080', 3);
+        }
+      }
     }
+    // Draw projectile moving along diagonal
+    const projDist = et * Math.max(ROWS, COLS) * tileSize;
+    // TL-BR diagonal projectile
+    const px1 = cx + projDist * 0.707;
+    const py1 = cy + projDist * 0.707;
+    // TR-BL diagonal projectile
+    const px2 = cx - projDist * 0.707;
+    const py2 = cy + projDist * 0.707;
   }, () => {
     for (const t of targets) {
       grid[t.row][t.col] = -1;
       clearOverride(t.row, t.col);
       removingTiles.delete(tileKey(t.row, t.col));
+      const tx = boardX + t.col * tileSize + tileSize / 2;
+      const ty = boardY + t.row * tileSize + tileSize / 2;
+      spawnSparkles(tx, ty, '#c8a080', 3);
     }
-    applyGravity();
+    for (const h of obstacleHits) {
+      damageObstacle(h.row, h.col, 'tool');
+    }
+    activatePendingTools(pendingToolActivations, () => {
+      applyGravity();
+    });
   }));
 }
 
 // Tool 10: Cloud — Shuffles entire board
 function useCloud() {
   locked = true;
-  // Collect all current tile types
+  // Collect all current tile types (skip obstacle cells — their gems are locked)
   const tiles = [];
+  const shuffleCells = [];
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      if (grid[r][c] >= 0) tiles.push(grid[r][c]);
+      if (grid[r][c] >= 0 && !hasObstacle(r, c)) {
+        tiles.push(grid[r][c]);
+        shuffleCells.push({ r, c });
+      }
     }
   }
 
-  // Shrink all tiles
+  // Shrink all non-obstacle tiles
   animations.push(new Animation(300, (t) => {
     const et = easeOut(t);
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        setOverride(r, c, { scale: 1 - et * 0.8, alpha: 1 - et * 0.5 });
-      }
+    for (const { r, c } of shuffleCells) {
+      setOverride(r, c, { scale: 1 - et * 0.8, alpha: 1 - et * 0.5 });
     }
   }, () => {
     // Shuffle
@@ -2150,26 +2684,19 @@ function useCloud() {
       const j = Math.floor(Math.random() * (i + 1));
       [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
     }
-    let idx = 0;
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        if (grid[r][c] >= 0) grid[r][c] = tiles[idx++];
-      }
+    for (let i = 0; i < shuffleCells.length; i++) {
+      grid[shuffleCells[i].r][shuffleCells[i].c] = tiles[i];
     }
 
     // Grow back in
     animations.push(new Animation(300, (t) => {
       const et = easeOutBounce(t);
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          setOverride(r, c, { scale: 0.2 + et * 0.8, alpha: 0.5 + et * 0.5 });
-        }
+      for (const { r, c } of shuffleCells) {
+        setOverride(r, c, { scale: 0.2 + et * 0.8, alpha: 0.5 + et * 0.5 });
       }
     }, () => {
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          clearOverride(r, c);
-        }
+      for (const { r, c } of shuffleCells) {
+        clearOverride(r, c);
       }
       processMatches();
     }));
@@ -2185,10 +2712,14 @@ function getCombo(toolA, toolB) {
   const combos = {
     '3,3': comboRainbowRainbow,   // Rainbow Star + Rainbow Star → clear everything
     '1,1': comboBombBomb,          // Bomb + Bomb → 5x5 mega explosion
-    '2,2': comboLightningLightning, // Lightning + Lightning → full row + full column
-    '1,2': comboBombLightning,     // Bomb + Lightning → full row + full column
+    '2,2': comboLightningLightning, // Lightning + Lightning → clear entire board
+    '1,2': comboBombLightning,     // Bomb + Lightning → 3-wide cross
     '1,3': comboRainbowBomb,       // Rainbow Star + Bomb → all of type → bombs → detonate
     '2,3': comboRainbowLightning,  // Rainbow Star + Lightning → all of type → lightning → fire
+    '1,9': comboBombSlingshot,     // Bomb + Slingshot → diagonal explosion path
+    '2,9': comboLightningSlingshot, // Lightning + Slingshot → row + col + diagonals
+    '3,9': comboRainbowSlingshot,  // Rainbow + Slingshot → type-clear + diagonal
+    '9,9': comboSlingshotSlingshot, // Slingshot + Slingshot → both diagonals X
   };
 
   return combos[key] || null;
@@ -2197,6 +2728,22 @@ function getCombo(toolA, toolB) {
 // Rainbow Star + Rainbow Star → Love Letter (clear entire board)
 function comboRainbowRainbow() {
   scorePopups.push({ x: W / 2, y: H / 2 - 40, text: 'LOVE LETTER!', alpha: 1, dy: 0 });
+  // Rainbow wave expanding from center
+  const bcx = boardX + COLS * tileSize / 2;
+  const bcy = boardY + ROWS * tileSize / 2;
+  const rainbowColors = ['#ff4081', '#ff9800', '#ffeb3b', '#4caf50', '#2196f3', '#9c27b0'];
+  for (let i = 0; i < rainbowColors.length; i++) {
+    setTimeout(() => {
+      spawnExplosionRing(bcx, bcy, rainbowColors[i], tileSize * (3 + i));
+    }, i * 60);
+  }
+  spawnShockwave(bcx, bcy);
+  triggerFlash(0.5);
+  triggerScreenShake(8);
+  // Massive sparkle burst
+  for (let i = 0; i < 30; i++) {
+    spawnSparkles(bcx + (Math.random() - 0.5) * COLS * tileSize, bcy + (Math.random() - 0.5) * ROWS * tileSize, rainbowColors[Math.floor(Math.random() * rainbowColors.length)], 3);
+  }
   activateLoveLetter();
 }
 
@@ -2221,45 +2768,92 @@ function comboBombBomb() {
 
   for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
 
-  animations.push(new Animation(400, (t) => {
-    const et = easeOut(t);
-    for (const tgt of targets) {
-      const scale = t < 0.2 ? 1 + et * 0.5 : 1.5 - (et - 0.2) * 1.8;
-      setOverride(tgt.row, tgt.col, { scale: Math.max(0, scale), alpha: 1 - et });
-    }
+  const cx = boardX + centerC * tileSize + tileSize / 2;
+  const cy = boardY + centerR * tileSize + tileSize / 2;
+
+  // Phase 1: Pulsing bomb icon at center
+  animations.push(new Animation(200, (t) => {
+    const pulse = 1 + Math.sin(t * Math.PI * 6) * 0.4;
+    setOverride(centerR, centerC, { scale: pulse });
   }, () => {
-    for (const t of targets) {
-      grid[t.row][t.col] = -1;
-      clearOverride(t.row, t.col);
-      removingTiles.delete(tileKey(t.row, t.col));
-      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 3);
-    }
-    applyGravity();
+    clearOverride(centerR, centerC);
+    // Phase 2: Massive explosion
+    triggerFlash(0.7);
+    triggerScreenShake(12);
+    spawnExplosionRing(cx, cy, '#ff4081', tileSize * 4);
+    spawnExplosionRing(cx, cy, '#ff6b8a', tileSize * 3);
+    spawnShockwave(cx, cy);
+    spawnFireParticles(cx, cy, 40);
+
+    animations.push(new Animation(400, (t) => {
+      const et = easeOut(t);
+      for (const tgt of targets) {
+        const dist = Math.abs(tgt.row - centerR) + Math.abs(tgt.col - centerC);
+        const delay = dist * 0.08;
+        const lt = Math.max(0, Math.min(1, (t - delay) / (1 - delay)));
+        const s = lt < 0.15 ? 1 + lt * 3 : Math.max(0, 1.45 - (lt - 0.15) * 1.7);
+        setOverride(tgt.row, tgt.col, { scale: s, alpha: 1 - lt });
+      }
+    }, () => {
+      for (const t of targets) {
+        grid[t.row][t.col] = -1;
+        clearOverride(t.row, t.col);
+        removingTiles.delete(tileKey(t.row, t.col));
+        const tx = boardX + t.col * tileSize + tileSize / 2;
+        const ty = boardY + t.row * tileSize + tileSize / 2;
+        spawnHeartBurst(tx, ty, 3);
+        // Staggered explosion rings per cell
+        const dist = Math.abs(t.row - centerR) + Math.abs(t.col - centerC);
+        setTimeout(() => {
+          spawnExplosionRing(tx, ty, '#ff4081', tileSize);
+          spawnFireParticles(tx, ty, 3);
+        }, dist * 30);
+      }
+      applyGravity();
+    }));
   }));
 }
 
-// Lightning + Lightning → clears a random full row AND a random full column
+// Lightning + Lightning → clears ALL rows AND ALL columns (entire board!)
 function comboLightningLightning() {
   locked = true;
-  const row = Math.floor(Math.random() * ROWS);
-  const col = Math.floor(Math.random() * COLS);
   const targets = [];
   const seen = new Set();
-  for (let c = 0; c < COLS; c++) {
-    if (grid[row][c] >= 0) { targets.push({ row, col: c }); seen.add(tileKey(row, c)); }
-  }
+  // Clear every cell on the board
   for (let r = 0; r < ROWS; r++) {
-    const k = tileKey(r, col);
-    if (grid[r][col] >= 0 && !seen.has(k)) { targets.push({ row: r, col }); seen.add(k); }
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] >= 0 && !hasObstacle(r, c)) {
+        const k = tileKey(r, c);
+        if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+      }
+    }
   }
 
   const pts = targets.length * 30;
   score += pts;
-  scorePopups.push({ x: W / 2, y: H / 2, text: 'DOUBLE LIGHTNING +' + pts, alpha: 1, dy: 0 });
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'LIGHTNING STORM +' + pts, alpha: 1, dy: 0 });
 
   for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
 
-  animations.push(new Animation(350, (t) => {
+  // Electric grid: arcs along every row and column
+  const boardCx = boardX + COLS * tileSize / 2;
+  const boardCy = boardY + ROWS * tileSize / 2;
+  for (let r = 0; r < ROWS; r++) {
+    const y = boardY + r * tileSize + tileSize / 2;
+    spawnElectricArc(boardX, y, boardX + COLS * tileSize, y, '#00e5ff', 0.6);
+  }
+  for (let c = 0; c < COLS; c++) {
+    const x = boardX + c * tileSize + tileSize / 2;
+    spawnElectricArc(x, boardY, x, boardY + ROWS * tileSize, '#00e5ff', 0.6);
+  }
+  // Cross arcs
+  spawnElectricArc(boardX, boardY, boardX + COLS * tileSize, boardY + ROWS * tileSize, '#80d8ff', 0.5);
+  spawnElectricArc(boardX + COLS * tileSize, boardY, boardX, boardY + ROWS * tileSize, '#80d8ff', 0.5);
+
+  triggerFlash(0.6);
+  triggerScreenShake(10);
+
+  animations.push(new Animation(450, (t) => {
     const et = easeOut(t);
     for (const tgt of targets) {
       setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
@@ -2269,6 +2863,9 @@ function comboLightningLightning() {
       grid[t.row][t.col] = -1;
       clearOverride(t.row, t.col);
       removingTiles.delete(tileKey(t.row, t.col));
+      const tx = boardX + t.col * tileSize + tileSize / 2;
+      const ty = boardY + t.row * tileSize + tileSize / 2;
+      spawnSparkles(tx, ty, Math.random() < 0.5 ? '#00e5ff' : '#fff', 3);
     }
     applyGravity();
   }));
@@ -2281,22 +2878,27 @@ function comboBombLightning() {
   const col = Math.floor(COLS / 2);
   const targets = [];
   const seen = new Set();
-  // Full row
-  for (let c = 0; c < COLS; c++) {
-    if (grid[row][c] >= 0) { targets.push({ row, col: c }); seen.add(tileKey(row, c)); }
-  }
-  // Full column
-  for (let r = 0; r < ROWS; r++) {
-    const k = tileKey(r, col);
-    if (grid[r][col] >= 0 && !seen.has(k)) { targets.push({ row: r, col }); seen.add(k); }
-  }
-  // Also 3x3 around intersection
+  // 3 parallel horizontal rows (3-wide cross)
   for (let dr = -1; dr <= 1; dr++) {
-    for (let dc = -1; dc <= 1; dc++) {
-      const r = row + dr, c = col + dc;
-      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
+    const r = row + dr;
+    if (r >= 0 && r < ROWS) {
+      for (let c = 0; c < COLS; c++) {
         const k = tileKey(r, c);
-        if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+        if (!seen.has(k) && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+          targets.push({ row: r, col: c }); seen.add(k);
+        }
+      }
+    }
+  }
+  // 3 parallel vertical columns (3-wide cross)
+  for (let dc = -1; dc <= 1; dc++) {
+    const c = col + dc;
+    if (c >= 0 && c < COLS) {
+      for (let r = 0; r < ROWS; r++) {
+        const k = tileKey(r, c);
+        if (!seen.has(k) && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+          targets.push({ row: r, col: c }); seen.add(k);
+        }
       }
     }
   }
@@ -2306,6 +2908,27 @@ function comboBombLightning() {
   scorePopups.push({ x: W / 2, y: H / 2, text: 'BOMB+LIGHTNING +' + pts, alpha: 1, dy: 0 });
 
   for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  const cx = boardX + col * tileSize + tileSize / 2;
+  const cy = boardY + row * tileSize + tileSize / 2;
+
+  // 3 horizontal lightning arcs + 3 vertical
+  for (let dr = -1; dr <= 1; dr++) {
+    const y = boardY + (row + dr) * tileSize + tileSize / 2;
+    if (row + dr >= 0 && row + dr < ROWS) {
+      spawnElectricArc(boardX, y, boardX + COLS * tileSize, y, '#00e5ff', 0.5);
+    }
+  }
+  for (let dc = -1; dc <= 1; dc++) {
+    const x = boardX + (col + dc) * tileSize + tileSize / 2;
+    if (col + dc >= 0 && col + dc < COLS) {
+      spawnElectricArc(x, boardY, x, boardY + ROWS * tileSize, '#00e5ff', 0.5);
+    }
+  }
+  spawnExplosionRing(cx, cy, '#ff4081', tileSize * 2);
+  spawnFireParticles(cx, cy, 15);
+  triggerFlash(0.4);
+  triggerScreenShake(8);
 
   animations.push(new Animation(400, (t) => {
     const et = easeOut(t);
@@ -2317,7 +2940,9 @@ function comboBombLightning() {
       grid[t.row][t.col] = -1;
       clearOverride(t.row, t.col);
       removingTiles.delete(tileKey(t.row, t.col));
-      spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
+      const tx = boardX + t.col * tileSize + tileSize / 2;
+      const ty = boardY + t.row * tileSize + tileSize / 2;
+      spawnSparkles(tx, ty, Math.random() < 0.5 ? '#00e5ff' : '#ff4081', 3);
     }
     applyGravity();
   }));
@@ -2346,50 +2971,78 @@ function comboRainbowBomb() {
 
   scorePopups.push({ x: W / 2, y: H / 2 - 40, text: 'RAINBOW BOMB!', alpha: 1, dy: 0 });
 
-  // Phase 1: Flash the type cells, then explode 3x3 around each
-  animations.push(new Animation(400, (t) => {
+  const bcx = boardX + COLS * tileSize / 2;
+  const bcy = boardY + ROWS * tileSize / 2;
+
+  // Phase 1: Rainbow beams shoot from center to matching gems
+  animations.push(new Animation(300, (t) => {
     const pulse = Math.sin(t * Math.PI * 4);
     for (const cell of typeCells) {
       setOverride(cell.row, cell.col, { scale: 1 + pulse * 0.2 });
+      // Sparkle trail from center to each cell
+      if (t > 0.3 && t < 0.35) {
+        const tx = boardX + cell.col * tileSize + tileSize / 2;
+        const ty = boardY + cell.row * tileSize + tileSize / 2;
+        const colors = ['#ff4081', '#ff9800', '#ffeb3b', '#4caf50', '#2196f3', '#9c27b0'];
+        spawnSparkles(tx, ty, colors[Math.floor(Math.random() * colors.length)], 3);
+      }
     }
   }, () => {
     for (const cell of typeCells) clearOverride(cell.row, cell.col);
-    // Collect all cells in 3x3 around each type cell
-    const allTargets = new Set();
-    for (const cell of typeCells) {
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const r = cell.row + dr, c = cell.col + dc;
-          if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0) {
-            allTargets.add(tileKey(r, c));
+
+    // Phase 2: Mini-bomb pulse on each matching gem
+    animations.push(new Animation(300, (t) => {
+      const pulse = Math.sin(t * Math.PI * 6) * 0.3;
+      for (const cell of typeCells) {
+        setOverride(cell.row, cell.col, { scale: 1 + pulse });
+      }
+    }, () => {
+      for (const cell of typeCells) clearOverride(cell.row, cell.col);
+
+      // Phase 3: All mini-bombs detonate simultaneously
+      const allTargets = new Set();
+      for (const cell of typeCells) {
+        const tx = boardX + cell.col * tileSize + tileSize / 2;
+        const ty = boardY + cell.row * tileSize + tileSize / 2;
+        spawnExplosionRing(tx, ty, '#ff4081', tileSize * 1.2);
+        spawnFireParticles(tx, ty, 5);
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const r = cell.row + dr, c = cell.col + dc;
+            if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+              allTargets.add(tileKey(r, c));
+            }
           }
         }
       }
-    }
-    const targets = [];
-    allTargets.forEach(k => {
-      const [r, c] = k.split(',').map(Number);
-      targets.push({ row: r, col: c });
-      removingTiles.add(k);
-    });
+      triggerScreenShake(8);
+      triggerFlash(0.4);
 
-    const pts = targets.length * 30;
-    score += pts;
-    scorePopups.push({ x: W / 2, y: H / 2, text: '+' + pts, alpha: 1, dy: 0 });
+      const targets = [];
+      allTargets.forEach(k => {
+        const [r, c] = k.split(',').map(Number);
+        targets.push({ row: r, col: c });
+        removingTiles.add(k);
+      });
 
-    animations.push(new Animation(300, (t) => {
-      const et = easeOut(t);
-      for (const tgt of targets) {
-        setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
-      }
-    }, () => {
-      for (const t of targets) {
-        grid[t.row][t.col] = -1;
-        clearOverride(t.row, t.col);
-        removingTiles.delete(tileKey(t.row, t.col));
-        spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
-      }
-      applyGravity();
+      const pts = targets.length * 30;
+      score += pts;
+      scorePopups.push({ x: W / 2, y: H / 2, text: '+' + pts, alpha: 1, dy: 0 });
+
+      animations.push(new Animation(300, (t) => {
+        const et = easeOut(t);
+        for (const tgt of targets) {
+          setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+        }
+      }, () => {
+        for (const t of targets) {
+          grid[t.row][t.col] = -1;
+          clearOverride(t.row, t.col);
+          removingTiles.delete(tileKey(t.row, t.col));
+          spawnHeartBurst(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, 2);
+        }
+        applyGravity();
+      }));
     }));
   }));
 }
@@ -2415,21 +3068,47 @@ function comboRainbowLightning() {
 
   scorePopups.push({ x: W / 2, y: H / 2 - 40, text: 'RAINBOW LIGHTNING!', alpha: 1, dy: 0 });
 
-  // Phase 1: Flash type cells
-  animations.push(new Animation(400, (t) => {
+  // Phase 1: Rainbow beams to matching gems
+  animations.push(new Animation(300, (t) => {
     const pulse = Math.sin(t * Math.PI * 4);
     for (const cell of typeCells) {
-      setOverride(cell.row, cell.col, { scale: 1 + pulse * 0.2 });
+      setOverride(cell.row, cell.col, { scale: 1 + pulse * 0.25 });
+      if (t > 0.4 && t < 0.45) {
+        const tx = boardX + cell.col * tileSize + tileSize / 2;
+        const ty = boardY + cell.row * tileSize + tileSize / 2;
+        const colors = ['#ff4081', '#ffeb3b', '#4caf50', '#2196f3', '#9c27b0'];
+        spawnSparkles(tx, ty, colors[Math.floor(Math.random() * colors.length)], 3);
+      }
     }
   }, () => {
     for (const cell of typeCells) clearOverride(cell.row, cell.col);
+
+    // Phase 2: Each matching gem shoots lightning along its ROW
     // Collect all cells in the rows of each type cell
     const allTargets = new Set();
     for (const cell of typeCells) {
+      // Lightning along row from each gem
+      const cy = boardY + cell.row * tileSize + tileSize / 2;
+      spawnElectricArc(boardX, cy, boardX + COLS * tileSize, cy, '#00e5ff', 0.5);
       for (let c = 0; c < COLS; c++) {
-        if (grid[cell.row][c] >= 0) allTargets.add(tileKey(cell.row, c));
+        if (grid[cell.row][c] >= 0 && !hasObstacle(cell.row, c)) {
+          allTargets.add(tileKey(cell.row, c));
+        }
       }
     }
+    // Chain lightning connecting all type cells
+    for (let i = 0; i < typeCells.length - 1; i++) {
+      const a = typeCells[i], b = typeCells[i + 1];
+      const ax = boardX + a.col * tileSize + tileSize / 2;
+      const ay = boardY + a.row * tileSize + tileSize / 2;
+      const bx = boardX + b.col * tileSize + tileSize / 2;
+      const by = boardY + b.row * tileSize + tileSize / 2;
+      spawnElectricArc(ax, ay, bx, by, '#80d8ff', 0.4);
+    }
+
+    triggerFlash(0.35);
+    triggerScreenShake(7);
+
     const targets = [];
     allTargets.forEach(k => {
       const [r, c] = k.split(',').map(Number);
@@ -2441,7 +3120,7 @@ function comboRainbowLightning() {
     score += pts;
     scorePopups.push({ x: W / 2, y: H / 2, text: '+' + pts, alpha: 1, dy: 0 });
 
-    animations.push(new Animation(300, (t) => {
+    animations.push(new Animation(350, (t) => {
       const et = easeOut(t);
       for (const tgt of targets) {
         setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
@@ -2451,9 +3130,272 @@ function comboRainbowLightning() {
         grid[t.row][t.col] = -1;
         clearOverride(t.row, t.col);
         removingTiles.delete(tileKey(t.row, t.col));
+        spawnSparkles(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, '#00e5ff', 3);
       }
       applyGravity();
     }));
+  }));
+}
+
+// Bomb + Slingshot → Diagonal explosion path, 3 tiles wide
+function comboBombSlingshot() {
+  locked = true;
+  const centerR = Math.floor(ROWS / 2);
+  const centerC = Math.floor(COLS / 2);
+  const targets = [];
+  const seen = new Set();
+  // 3-wide diagonal path (both diagonals)
+  for (let d = -Math.max(ROWS, COLS); d <= Math.max(ROWS, COLS); d++) {
+    for (let w = -1; w <= 1; w++) {
+      // TL-BR diagonal + width
+      let r = centerR + d, c = centerC + d + w;
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+        const k = tileKey(r, c);
+        if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+      }
+      // TR-BL diagonal + width
+      r = centerR + d; c = centerC - d + w;
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+        const k = tileKey(r, c);
+        if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+      }
+    }
+  }
+
+  const pts = targets.length * 35;
+  score += pts;
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'BOMB SLINGSHOT +' + pts, alpha: 1, dy: 0 });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  const cx = boardX + centerC * tileSize + tileSize / 2;
+  const cy = boardY + centerR * tileSize + tileSize / 2;
+  spawnExplosionRing(cx, cy, '#ff6b00', tileSize * 2.5);
+  triggerScreenShake(8);
+  triggerFlash(0.4);
+
+  // Fire trail along diagonals
+  for (const t of targets) {
+    const tx = boardX + t.col * tileSize + tileSize / 2;
+    const ty = boardY + t.row * tileSize + tileSize / 2;
+    setTimeout(() => spawnFireParticles(tx, ty, 3), Math.abs(t.row - centerR) * 30);
+  }
+
+  animations.push(new Animation(400, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      const dist = Math.abs(tgt.row - centerR) + Math.abs(tgt.col - centerC);
+      const delay = dist * 0.06;
+      const lt = Math.max(0, Math.min(1, (t - delay) / (1 - delay)));
+      setOverride(tgt.row, tgt.col, { scale: 1 - lt * 0.8, alpha: 1 - lt });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+    }
+    applyGravity();
+  }));
+}
+
+// Lightning + Slingshot → Row + column + both diagonals (6-directional)
+function comboLightningSlingshot() {
+  locked = true;
+  const centerR = Math.floor(ROWS / 2);
+  const centerC = Math.floor(COLS / 2);
+  const targets = [];
+  const seen = new Set();
+  // Row
+  for (let c = 0; c < COLS; c++) {
+    if (grid[centerR][c] >= 0 && !hasObstacle(centerR, c)) {
+      const k = tileKey(centerR, c); if (!seen.has(k)) { targets.push({ row: centerR, col: c }); seen.add(k); }
+    }
+  }
+  // Column
+  for (let r = 0; r < ROWS; r++) {
+    if (grid[r][centerC] >= 0 && !hasObstacle(r, centerC)) {
+      const k = tileKey(r, centerC); if (!seen.has(k)) { targets.push({ row: r, col: centerC }); seen.add(k); }
+    }
+  }
+  // Both diagonals
+  for (let d = -Math.max(ROWS, COLS); d <= Math.max(ROWS, COLS); d++) {
+    let r = centerR + d, c = centerC + d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+      const k = tileKey(r, c); if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+    r = centerR + d; c = centerC - d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+      const k = tileKey(r, c); if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+  }
+
+  const pts = targets.length * 30;
+  score += pts;
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'LIGHTNING X +' + pts, alpha: 1, dy: 0 });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  const cx = boardX + centerC * tileSize + tileSize / 2;
+  const cy = boardY + centerR * tileSize + tileSize / 2;
+  // Electric arcs in + and X patterns
+  spawnElectricArc(boardX, cy, boardX + COLS * tileSize, cy, '#00e5ff', 0.5);
+  spawnElectricArc(cx, boardY, cx, boardY + ROWS * tileSize, '#00e5ff', 0.5);
+  spawnElectricArc(boardX, boardY, boardX + COLS * tileSize, boardY + ROWS * tileSize, '#80d8ff', 0.5);
+  spawnElectricArc(boardX + COLS * tileSize, boardY, boardX, boardY + ROWS * tileSize, '#80d8ff', 0.5);
+  triggerFlash(0.5);
+  triggerScreenShake(9);
+
+  animations.push(new Animation(400, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      setOverride(tgt.row, tgt.col, { scale: 1 - et * 0.8, alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+      spawnSparkles(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, Math.random() < 0.5 ? '#00e5ff' : '#fff', 3);
+    }
+    applyGravity();
+  }));
+}
+
+// Rainbow + Slingshot → Clear all of one type + diagonal line
+function comboRainbowSlingshot() {
+  locked = true;
+  const centerR = Math.floor(ROWS / 2);
+  const centerC = Math.floor(COLS / 2);
+
+  // Pick random type
+  const typeCounts = {};
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] >= 0) typeCounts[grid[r][c]] = (typeCounts[grid[r][c]] || 0) + 1;
+    }
+  }
+  const types = Object.keys(typeCounts).map(Number);
+  const targetType = types[Math.floor(Math.random() * types.length)];
+  const gemColor = TILE_TYPES[targetType] ? TILE_TYPES[targetType].bg1 : '#ff4081';
+
+  const targets = [];
+  const seen = new Set();
+  // All of type
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === targetType && !hasObstacle(r, c)) {
+        const k = tileKey(r, c); if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+      }
+    }
+  }
+  // Both diagonals through center
+  for (let d = -Math.max(ROWS, COLS); d <= Math.max(ROWS, COLS); d++) {
+    let r = centerR + d, c = centerC + d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+      const k = tileKey(r, c); if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+    r = centerR + d; c = centerC - d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+      const k = tileKey(r, c); if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+  }
+
+  const pts = targets.length * 30;
+  score += pts;
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'RAINBOW SLING +' + pts, alpha: 1, dy: 0 });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  const cx = boardX + centerC * tileSize + tileSize / 2;
+  const cy = boardY + centerR * tileSize + tileSize / 2;
+  const colors = ['#ff4081', '#ff9800', '#ffeb3b', '#4caf50', '#2196f3', '#9c27b0'];
+  // Rainbow beam diagonal
+  spawnExplosionRing(cx, cy, gemColor, tileSize * 2);
+  for (const t of targets) {
+    const tx = boardX + t.col * tileSize + tileSize / 2;
+    const ty = boardY + t.row * tileSize + tileSize / 2;
+    spawnSparkles(tx, ty, colors[Math.floor(Math.random() * colors.length)], 3);
+  }
+  triggerScreenShake(6);
+
+  animations.push(new Animation(400, (t) => {
+    const et = easeOut(t);
+    for (const tgt of targets) {
+      setOverride(tgt.row, tgt.col, { scale: 1 - et, alpha: 1 - et });
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+      spawnSparkles(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, gemColor, 5);
+    }
+    applyGravity();
+  }));
+}
+
+// Slingshot + Slingshot → Both diagonals (X pattern), two projectiles crossing
+function comboSlingshotSlingshot() {
+  locked = true;
+  const centerR = Math.floor(ROWS / 2);
+  const centerC = Math.floor(COLS / 2);
+  const targets = [];
+  const seen = new Set();
+  // Both diagonals through center
+  for (let d = -Math.max(ROWS, COLS); d <= Math.max(ROWS, COLS); d++) {
+    let r = centerR + d, c = centerC + d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+      const k = tileKey(r, c); if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+    r = centerR + d; c = centerC - d;
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c] >= 0 && !hasObstacle(r, c)) {
+      const k = tileKey(r, c); if (!seen.has(k)) { targets.push({ row: r, col: c }); seen.add(k); }
+    }
+  }
+
+  const pts = targets.length * 35;
+  score += pts;
+  scorePopups.push({ x: W / 2, y: H / 2, text: 'DOUBLE SLING +' + pts, alpha: 1, dy: 0 });
+
+  for (const t of targets) removingTiles.add(tileKey(t.row, t.col));
+
+  const cx = boardX + centerC * tileSize + tileSize / 2;
+  const cy = boardY + centerR * tileSize + tileSize / 2;
+
+  // Clash spark at center where projectiles cross
+  spawnShockwave(cx, cy);
+  spawnExplosionRing(cx, cy, '#ffaa00', tileSize * 1.5);
+  spawnSparkles(cx, cy, '#ffffff', 15);
+  spawnSparkles(cx, cy, '#ffaa00', 10);
+  triggerScreenShake(7);
+  triggerFlash(0.3);
+
+  // Stagger by distance from center
+  const sorted = [...targets].sort((a, b) => {
+    return (Math.abs(a.row - centerR) + Math.abs(a.col - centerC)) -
+           (Math.abs(b.row - centerR) + Math.abs(b.col - centerC));
+  });
+
+  animations.push(new Animation(450, (t) => {
+    const et = easeOut(t);
+    for (const tgt of sorted) {
+      const dist = Math.abs(tgt.row - centerR) + Math.abs(tgt.col - centerC);
+      const maxDist = Math.max(ROWS, COLS);
+      const delay = (dist / maxDist) * 0.4;
+      const lt = Math.max(0, Math.min(1, (t - delay) / (1 - delay)));
+      if (lt > 0) {
+        setOverride(tgt.row, tgt.col, { scale: 1 - lt * 0.8, alpha: 1 - lt });
+      }
+    }
+  }, () => {
+    for (const t of targets) {
+      grid[t.row][t.col] = -1;
+      clearOverride(t.row, t.col);
+      removingTiles.delete(tileKey(t.row, t.col));
+      spawnSparkles(boardX + t.col * tileSize + tileSize / 2, boardY + t.row * tileSize + tileSize / 2, '#c8a080', 4);
+    }
+    applyGravity();
   }));
 }
 
@@ -2560,6 +3502,10 @@ function restartGame() {
   cascadeLevel = 0;
   heartParticles = [];
   sparkleParticles = [];
+  explosionRings = [];
+  fireParticles = [];
+  electricArcs = [];
+  shockwaveRings = [];
   flyingTool = null;
   hintTimer = 0;
   hintCells = null;
@@ -2889,90 +3835,94 @@ function drawSpecialTile(row, col, type, overrides) {
 }
 
 function drawObstacle(row, col, obs) {
-  const x = boardX + col * tileSize + 2;
-  const y = boardY + row * tileSize + 2;
-  const w = tileSize - 4;
-  const h = tileSize - 4;
-  const radius = tileSize * 0.15;
-  const damage = 1 - obs.hp / obs.maxHp; // 0 = full hp, 1 = almost dead
+  const pad = 1;
+  const x = boardX + col * tileSize + pad;
+  const y = boardY + row * tileSize + pad;
+  const w = tileSize - pad * 2;
+  const h = tileSize - pad * 2;
+
+  const def = OBSTACLE_TYPES[obs.type];
+  if (!def) return;
+
+  // For ice: draw the gem behind at reduced opacity (gem is visible through ice)
+  if (obs.type === 'ice') {
+    const gemType = grid[row][col];
+    if (gemType >= 0 && TILE_TYPES[gemType]) {
+      const gemInfo = TILE_TYPES[gemType];
+      const gemImg = imageCache[gemInfo.file];
+      if (gemImg) {
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        const imgPad = w * 0.05;
+        ctx.drawImage(gemImg, x + imgPad + 1, y + imgPad + 1, w - imgPad * 2, h - imgPad * 2);
+        ctx.restore();
+      }
+    }
+  }
+
+  // Pick sprite based on current HP: hp maps to sprite index (hp is 1-indexed)
+  // sprites array: [stage1 (broken), stage2 (mid), stage3 (intact)]
+  // hp=maxHp → last sprite (intact), hp=1 → first sprite (almost broken)
+  const spriteIndex = Math.min(obs.hp, def.sprites.length) - 1;
+  const spriteFile = def.sprites[spriteIndex];
+  const img = imageCache[spriteFile];
 
   ctx.save();
 
-  if (obs.type === 'lockedHeart') {
-    // Golden lock overlay — gets cracked as HP drops
-    ctx.globalAlpha = 0.6 - damage * 0.2;
-    drawRoundedRect(x, y, w, h, radius);
-    ctx.fillStyle = `rgba(255, 215, 0, ${0.4 - damage * 0.2})`;
-    ctx.fill();
-    // Chain pattern
-    ctx.strokeStyle = `rgba(184, 134, 11, ${0.7 - damage * 0.3})`;
-    ctx.lineWidth = 2.5 - damage;
-    // Horizontal chain
-    ctx.beginPath();
-    ctx.moveTo(x + 4, y + h / 2);
-    ctx.lineTo(x + w - 4, y + h / 2);
-    ctx.stroke();
-    // Vertical chain
-    ctx.beginPath();
-    ctx.moveTo(x + w / 2, y + 4);
-    ctx.lineTo(x + w / 2, y + h - 4);
-    ctx.stroke();
-    // Lock icon
-    ctx.fillStyle = '#b8860b';
-    ctx.font = 'bold ' + (w * 0.35) + 'px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(damage > 0.4 ? '\uD83D\uDD13' : '\uD83D\uDD12', x + w / 2, y + h / 2);
-    // Cracks
-    if (damage > 0) {
-      ctx.strokeStyle = 'rgba(100,50,0,0.5)';
+  if (img) {
+    // Draw the obstacle sprite over the tile
+    ctx.drawImage(img, x, y, w, h);
+
+    // Subtle damage shake effect when HP < max
+    if (obs.hp < obs.maxHp) {
+      // Small crack overlay lines to hint at damage
+      const damage = 1 - obs.hp / obs.maxHp;
+      ctx.globalAlpha = damage * 0.4;
+      ctx.strokeStyle = '#fff';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(x + w * 0.3, y + h * 0.2);
-      ctx.lineTo(x + w * 0.5, y + h * 0.5);
-      ctx.lineTo(x + w * 0.7, y + h * 0.3);
+      ctx.moveTo(x + w * 0.3, y + h * 0.15);
+      ctx.lineTo(x + w * 0.5, y + h * 0.45);
+      ctx.lineTo(x + w * 0.65, y + h * 0.3);
       ctx.stroke();
+      if (damage > 0.5) {
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.6, y + h * 0.55);
+        ctx.lineTo(x + w * 0.45, y + h * 0.8);
+        ctx.stroke();
+      }
     }
-  } else if (obs.type === 'roseVine') {
-    // Green vines wrapping the tile — thin out with damage
-    const alpha = 0.6 - damage * 0.25;
-    ctx.globalAlpha = alpha;
-    const vineColor = damage > 0.5 ? '#8b4513' : '#228b22';
-    ctx.strokeStyle = vineColor;
-    ctx.lineWidth = 3 - damage * 2;
-    // Vine tendrils
-    const vines = Math.max(1, Math.floor((1 - damage) * 4));
-    for (let v = 0; v < vines; v++) {
+  } else {
+    // Fallback: colored overlay if image not loaded yet
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = def.color1;
+    drawRoundedRect(x, y, w, h, tileSize * 0.15);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + (w * 0.3) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(obs.hp + '❤️', x + w / 2, y + h / 2);
+  }
+
+  // HP indicator dots (bottom of tile)
+  if (obs.maxHp > 1) {
+    const dotR = Math.max(2, w * 0.04);
+    const dotSpacing = dotR * 3.5;
+    const dotsWidth = (obs.maxHp - 1) * dotSpacing;
+    const dotStartX = x + w / 2 - dotsWidth / 2;
+    const dotY = y + h - dotR * 2.5;
+    for (let i = 0; i < obs.maxHp; i++) {
       ctx.beginPath();
-      const startX = x + (v % 2 === 0 ? 0 : w);
-      const startY = y + (v / vines) * h;
-      ctx.moveTo(startX, startY);
-      ctx.quadraticCurveTo(x + w / 2, y + h * (0.3 + v * 0.15), x + (v % 2 === 0 ? w : 0), y + h * 0.8);
-      ctx.stroke();
-    }
-    // Thorns
-    ctx.fillStyle = vineColor;
-    ctx.globalAlpha = alpha * 0.8;
-    for (let i = 0; i < 3 - Math.floor(damage * 2); i++) {
-      const tx = x + w * (0.2 + i * 0.3);
-      const ty = y + h * (0.3 + (i % 2) * 0.4);
-      ctx.beginPath();
-      ctx.arc(tx, ty, 2.5, 0, Math.PI * 2);
+      ctx.arc(dotStartX + i * dotSpacing, dotY, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = i < obs.hp ? '#fff' : 'rgba(0,0,0,0.3)';
+      ctx.globalAlpha = 0.9;
       ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
     }
-  } else if (obs.type === 'yarnTangle') {
-    // Pink yarn strands — single hit
-    ctx.globalAlpha = 0.55;
-    ctx.strokeStyle = '#ff69b4';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(x + 4, y + 4);
-    ctx.bezierCurveTo(x + w * 0.7, y + h * 0.2, x + w * 0.3, y + h * 0.8, x + w - 4, y + h - 4);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x + w - 4, y + 4);
-    ctx.bezierCurveTo(x + w * 0.3, y + h * 0.3, x + w * 0.7, y + h * 0.7, x + 4, y + h - 4);
-    ctx.stroke();
   }
 
   ctx.restore();
@@ -3688,6 +4638,9 @@ function render(time, dt) {
       }
       if (grid[r][c] < 0) continue;
 
+      // Skip tiles with obstacles — drawObstacle handles rendering (ice shows gem, others hide it)
+      if (hasObstacle(r, c)) continue;
+
       // Love Letter: draw pink heart instead of normal gem
       if (loveLetterTransformed && loveLetterTransformed.has(key)) {
         drawPinkHeart(r, c);
@@ -3750,6 +4703,18 @@ function render(time, dt) {
 
   // Sparkle particles
   updateAndDrawSparkles(dt);
+
+  // Explosion rings
+  updateAndDrawExplosionRings(dt);
+
+  // Fire particles
+  updateAndDrawFireParticles(dt);
+
+  // Electric arcs
+  updateAndDrawElectricArcs(dt);
+
+  // Shockwave rings
+  updateAndDrawShockwaves(dt);
 
   // Heart particles (Love Letter effect)
   updateAndDrawHeartParticles(dt);
