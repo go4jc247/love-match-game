@@ -5693,9 +5693,31 @@ function init() {
 window.addEventListener('resize', resize);
 init();
 
-// Register service worker for PWA
+// Register service worker for PWA — force update check on every load
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    // Check for updates immediately on load
+    reg.update().catch(() => {});
+    // When a new SW is waiting, tell it to activate immediately
+    if (reg.waiting) {
+      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+    reg.addEventListener('updatefound', () => {
+      const newSW = reg.installing;
+      if (newSW) {
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'activated') {
+            // New service worker active — reload to get fresh content
+            window.location.reload();
+          }
+        });
+      }
+    });
+  }).catch(() => {});
+  // Listen for the new SW taking control and reload
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
 }
 
 // ── Gist Sync Engine (inline for single-file game) ──
