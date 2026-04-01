@@ -1,9 +1,9 @@
-const CACHE_NAME = 'love-match-v17';
+const CACHE_NAME = 'love-match-v18';
 
 const ASSETS = [
-  '/index.html',
-  '/match.html',
-  '/manifest.json',
+  './index.html',
+  './match.html',
+  './manifest.json',
 ];
 
 // Install — pre-cache core game assets, immediately take over

@@ -2,7 +2,7 @@
   "name": "Love Match - A Game for Two Hearts",
   "short_name": "Love Match",
   "description": "A romantic match-3 game with kittens, love, and magic",
-  "start_url": "/match.html",
+  "start_url": "./match.html",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#FFE4E1",
