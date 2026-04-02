@@ -434,16 +434,16 @@ class App {
       this.saveGame();
     } catch (e) { /* ignore sync errors */ }
 
-    // Use 51 levels (matching the match game's LEVEL_PROGRESSION)
-    const totalLevels = 54;
+    // Show levels up to current progress + 10 (infinite procedural levels beyond 54)
+    const currentLevel = this.state.progress.currentLevel || 1;
+    const totalLevels = Math.max(54, currentLevel + 10);
     const allLevels = [];
     for (let i = 1; i <= totalLevels; i++) {
       allLevels.push({ id: i, number: i });
     }
 
-    const currentLevel = this.state.progress.currentLevel || 1;
     const progressMap = {};
-    // Level 51 is always unlocked (test level)
+    // Test levels (51-54) are always unlocked
     const ALWAYS_UNLOCKED = [51, 52, 53, 54];
     for (const level of allLevels) {
       const num = level.id;

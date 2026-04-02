@@ -472,12 +472,157 @@ const LEVEL_PROGRESSION = [
     intro: 'Level 54! An 8×13 ultra board.' },
 ];
 
+// ── Procedural Level Generator ──
+// For levels beyond LEVEL_PROGRESSION, generates configs with wave-based difficulty.
+// Difficulty oscillates in cycles with boss levels every 20 levels.
+// Uses level number as seed so the same level always generates identically.
+function generateLevelConfig(lvl) {
+  // Seeded pseudo-random using level number (deterministic per level)
+  function seededRand(seed) {
+    let s = seed;
+    return function() {
+      s = (s * 1664525 + 1013904223) & 0xFFFFFFFF;
+      return (s >>> 0) / 0xFFFFFFFF;
+    };
+  }
+  const rand = seededRand(lvl * 2654435761);
+
+  // ── Difficulty curve ──
+  // posInCycle: 0-19 within each 20-level boss cycle
+  const posInCycle = (lvl - 1) % 20;
+  const cycleNum = Math.floor((lvl - 1) / 20);   // which 20-level cycle
+  const isBoss = posInCycle === 19;               // every 20th level is boss
+
+  // Wave difficulty within cycle: rises, dips, rises to boss
+  // Uses a double-hump sine pattern: easy start, mid peak, brief dip, boss climax
+  let waveDiff;
+  if (isBoss) {
+    waveDiff = 1.0; // Boss = max difficulty for this cycle
+  } else {
+    // Two humps: peaks around pos 8 and pos 16, valleys at 0 and 12
+    const t = posInCycle / 18; // 0 to 1 across non-boss levels
+    waveDiff = 0.3 + 0.35 * Math.sin(t * Math.PI) + 0.35 * Math.sin(t * 2 * Math.PI - Math.PI * 0.3);
+    waveDiff = Math.max(0.1, Math.min(waveDiff, 0.95));
+  }
+
+  // Global difficulty ramps up over cycles but caps at cycle 5 (~level 100)
+  const globalRamp = Math.min(1.0, cycleNum / 5);
+  // Final difficulty: blend wave with global ramp (0.0 = easiest, 1.0 = hardest)
+  const diff = waveDiff * (0.5 + 0.5 * globalRamp);
+
+  // ── Board dimensions ──
+  // Vary grid size based on difficulty + randomness for variety
+  const boardPresets = [
+    { cols: 5, rows: 5 },  // small
+    { cols: 6, rows: 6 },  // medium
+    { cols: 5, rows: 7 },  // tall narrow
+    { cols: 7, rows: 7 },  // large square
+    { cols: 6, rows: 8 },  // tall medium
+    { cols: 8, rows: 8 },  // big square
+    { cols: 7, rows: 9 },  // large tall
+    { cols: 8, rows: 10 }, // extra large
+    { cols: 8, rows: 12 }, // mega (boss-tier)
+    { cols: 8, rows: 13 }, // ultra (boss-tier)
+  ];
+  let boardIdx;
+  if (isBoss) {
+    // Bosses get big boards, bigger as cycles progress
+    boardIdx = Math.min(boardPresets.length - 1, 7 + Math.min(cycleNum, 2));
+  } else {
+    // Normal levels: pick from range based on difficulty
+    const minIdx = Math.floor(diff * 3);          // easy=0-2, hard=4-7
+    const maxIdx = Math.min(minIdx + 4, boardPresets.length - 3); // avoid mega for non-boss
+    boardIdx = minIdx + Math.floor(rand() * (maxIdx - minIdx + 1));
+  }
+  const board = boardPresets[Math.min(boardIdx, boardPresets.length - 1)];
+
+  // ── Gem count ──
+  // More gems = harder (more types to track). Range: 3-7
+  const minGems = 3;
+  const maxGems = Math.min(7, 3 + Math.floor(globalRamp * 4));
+  let gems = minGems + Math.floor(diff * (maxGems - minGems + 1));
+  gems = Math.max(3, Math.min(gems, ALL_GEMS.length));
+  // Bosses always use more gem types
+  if (isBoss) gems = Math.min(ALL_GEMS.length, maxGems + 1);
+
+  // ── Board shape ──
+  // Occasionally use shaped boards for variety (not every level)
+  const shapedChance = isBoss ? 0.6 : (0.15 + diff * 0.25);
+  const boardPct = rand() < shapedChance ? (0.7 + rand() * 0.2) : 1.0;
+
+  // ── Obstacles ──
+  const allObsTypes = ['ice', 'crate', 'giftbox', 'parcel'];
+  let obstacleCount = 0;
+  let obstacleTypes = [];
+  if (diff > 0.2 || isBoss) {
+    // Number of obstacles scales with difficulty and board size
+    const maxObs = Math.floor(board.cols * board.rows * 0.25);
+    obstacleCount = Math.max(2, Math.round(diff * maxObs));
+    if (isBoss) obstacleCount = Math.min(maxObs, obstacleCount + 4);
+    // Pick 1-4 obstacle types based on difficulty
+    const numTypes = Math.min(allObsTypes.length, 1 + Math.floor(diff * 3) + (isBoss ? 1 : 0));
+    // Shuffle obstacle types with seed for variety
+    const shuffled = [...allObsTypes];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    obstacleTypes = shuffled.slice(0, numTypes);
+  }
+
+  // ── Time & Moves ──
+  // More time/moves for bigger boards, less for higher difficulty
+  const cellCount = board.cols * board.rows;
+  const baseTime = 60 + cellCount * 1.5;
+  const baseMoves = 20 + Math.floor(cellCount * 0.5);
+  // Difficulty reduces time/moves (harder = less generous)
+  const timeMult = isBoss ? 0.85 : (1.2 - diff * 0.4);
+  const movesMult = isBoss ? 0.85 : (1.2 - diff * 0.4);
+  const time = Math.round(baseTime * timeMult);
+  const moves = Math.round(baseMoves * movesMult);
+
+  // ── Target score ──
+  // Scales with board size and difficulty
+  const baseTarget = cellCount * 40;
+  const targetMult = 0.6 + diff * 0.8 + (isBoss ? 0.5 : 0);
+  const target = Math.round(baseTarget * targetMult / 100) * 100; // round to nearest 100
+
+  // ── Intro text ──
+  let intro;
+  if (isBoss) {
+    const bossNum = cycleNum + 1;
+    const bossTitles = ['Guardian', 'Champion', 'Overlord', 'Titan', 'Legend'];
+    const title = bossTitles[Math.min(bossNum - 1, bossTitles.length - 1)];
+    intro = `BOSS LEVEL ${lvl}! The ${title} awaits — ${board.cols}×${board.rows} board, ${gems} gem types!`;
+  } else if (diff < 0.3) {
+    const easy = ['Breather round!', 'Take it easy!', 'A lighter challenge.', 'Catch your breath!', 'Warm-up time!'];
+    intro = easy[Math.floor(rand() * easy.length)] + ` ${board.cols}×${board.rows} board.`;
+  } else if (diff > 0.7) {
+    const hard = ['Things are heating up!', 'Can you handle this?', 'Brace yourself!', 'No mercy!', 'Full throttle!'];
+    intro = hard[Math.floor(rand() * hard.length)] + ` ${board.cols}×${board.rows} board.`;
+  } else {
+    const mid = ['Keep going!', 'Stay sharp!', 'Nice and steady.', 'You got this!', 'Level up!'];
+    intro = mid[Math.floor(rand() * mid.length)] + ` ${board.cols}×${board.rows} board.`;
+  }
+
+  return {
+    gems, cols: board.cols, rows: board.rows, boardPct,
+    time, moves, target,
+    obstacleCount: obstacleCount || undefined,
+    obstacleTypes: obstacleTypes.length ? obstacleTypes : undefined,
+    intro,
+    generated: true, // flag so we know this was procedurally made
+    isBoss,
+  };
+}
+
 function getLevelConfig(lvl) {
-  const idx = Math.min(lvl - 1, LEVEL_PROGRESSION.length - 1);
-  let cfg = { ...LEVEL_PROGRESSION[idx] };
-  // Scale target for levels beyond the table
-  if (lvl > LEVEL_PROGRESSION.length) {
-    cfg.target = cfg.target + (lvl - LEVEL_PROGRESSION.length) * 1500;
+  // Levels 1-54 use hardcoded progression, beyond that use procedural generation
+  let cfg;
+  if (lvl <= LEVEL_PROGRESSION.length) {
+    cfg = { ...LEVEL_PROGRESSION[lvl - 1] };
+  } else {
+    cfg = generateLevelConfig(lvl);
   }
 
   // Determine level mode: use config override if present, else odd=timer even=moves
@@ -485,24 +630,23 @@ function getLevelConfig(lvl) {
     cfg.mode = (lvl % 2 === 1) ? 'timer' : 'moves';
   }
 
-  // Save any per-level time/moves overrides from the config
-  const cfgTime = LEVEL_PROGRESSION[idx].time;
-  const cfgMoves = LEVEL_PROGRESSION[idx].moves;
+  // For hardcoded levels, apply tier-based time/moves defaults
+  if (lvl <= LEVEL_PROGRESSION.length) {
+    const cfgTime = LEVEL_PROGRESSION[lvl - 1].time;
+    const cfgMoves = LEVEL_PROGRESSION[lvl - 1].moves;
 
-  // Set tier-based defaults for time and moves
-  let tierTime, tierMoves;
-  if (lvl <= 5) { tierTime = 90; tierMoves = 30; }
-  else if (lvl <= 10) { tierTime = 120; tierMoves = 35; }
-  else if (lvl <= 15) { tierTime = 150; tierMoves = 40; }
-  else if (lvl <= 20) { tierTime = 180; tierMoves = 45; }
-  else if (lvl <= 30) { tierTime = 210; tierMoves = 50; }
-  else if (lvl <= 40) { tierTime = 240; tierMoves = 55; }
-  else { tierTime = 270; tierMoves = 60; }
+    let tierTime, tierMoves;
+    if (lvl <= 5) { tierTime = 90; tierMoves = 30; }
+    else if (lvl <= 10) { tierTime = 120; tierMoves = 35; }
+    else if (lvl <= 15) { tierTime = 150; tierMoves = 40; }
+    else if (lvl <= 20) { tierTime = 180; tierMoves = 45; }
+    else if (lvl <= 30) { tierTime = 210; tierMoves = 50; }
+    else if (lvl <= 40) { tierTime = 240; tierMoves = 55; }
+    else { tierTime = 270; tierMoves = 60; }
 
-  // Per-level config overrides take priority over tier defaults
-  // For levels 21+, the config already has specific time/moves values
-  cfg.time = (cfgTime !== undefined && lvl > 20) ? cfgTime : tierTime;
-  cfg.moves = (cfgMoves !== undefined && lvl > 20) ? cfgMoves : tierMoves;
+    cfg.time = (cfgTime !== undefined && lvl > 20) ? cfgTime : tierTime;
+    cfg.moves = (cfgMoves !== undefined && lvl > 20) ? cfgMoves : tierMoves;
+  }
 
   return cfg;
 }
