@@ -247,229 +247,351 @@ const PINK_HEART_FILE = 'icons/sheet5-icon-3.png';
 // ── Level Progression ──
 // Each level defines: gems count, board active %, time, score target, and what's new
 const LEVEL_PROGRESSION = [
-  // ── Tutorial Arc (levels 1-5): Learn core mechanics ──
-  // lvl 1:  3 gems, 5x5, basic matching
-  { gems: 3, cols: 5, rows: 5, boardPct: 1.0, time: 60,  target: 900,
-    intro: 'Match 3 in a row to clear tiles and score points!' },
-  // lvl 2:  3 gems, 5x6, introduce 4-in-a-row → Lightning
-  { gems: 3, cols: 6, rows: 5, boardPct: 1.0, time: 70,  target: 1500,
-    intro: 'Match 4 in a row to create a Lightning Bolt! It clears an entire row or column.' },
-  // lvl 3:  4 gems, 6x6, introduce 2x2 → Potion
-  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 75,  target: 2400,
-    intro: 'Match a 2×2 square to create a Potion! It transforms nearby tiles.' },
-  // lvl 4:  4 gems, 6x6, introduce L/T shape → Bomb
-  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 80,  target: 3000,
-    intro: 'Match an L or T shape to create a Bomb! It explodes a 3×3 area.' },
-  // lvl 5:  4 gems, 7x6, introduce 5-in-a-row → Rainbow Star
-  { gems: 4, cols: 7, rows: 6, boardPct: 1.0, time: 80,  target: 3600,
-    intro: 'Match 5 in a row for a Rainbow Star! Swap it with any gem to clear all of that type.' },
+  // ── TRAINING ARC: Basic Matching (levels 1-3) ──
+  { gems: 3, cols: 5, rows: 5, boardPct: 1.0, time: 90, moves: 30, target: 500,
+    goals: [{ type: 'match_any', count: 15 }],
+    intro: 'Welcome! Swap gems to make rows of 3 or more. Match 15 gems to complete the level!' },
+  { gems: 3, cols: 5, rows: 5, boardPct: 1.0, time: 90, moves: 30, target: 800,
+    goals: [{ type: 'match_any', count: 20 }],
+    intro: 'Great job! Keep matching — try to chain combos for more points!' },
+  { gems: 3, cols: 5, rows: 6, boardPct: 1.0, time: 100, moves: 35, target: 1000,
+    goals: [{ type: 'match_any', count: 25 }, { type: 'match_type', gemType: 0, count: 8 }],
+    intro: 'Bigger board! Match 25 gems total, and 8 of the same type.' },
 
-  // ── Growth Arc (levels 6-10): Board expands, new challenges ──
-  // lvl 6:  5 gems, 7x7, introduce obstacles
-  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 85,  target: 4500,
-    intro: 'Watch out! Obstacles block your path. Clear tiles next to them to break them.' },
-  // lvl 7:  5 gems, 7x7 diamond shape, introduce Magic Wand
-  { gems: 5, cols: 7, rows: 7, boardPct: 0.85, time: 85, target: 5400,
-    intro: 'New tool: Magic Wand! Tap it to remove any single tile. Great for tricky spots.' },
-  // lvl 8:  5 gems, 8x7, introduce Magnet
-  { gems: 5, cols: 8, rows: 7, boardPct: 1.0, time: 85,  target: 6000,
-    intro: 'New tool: Magnet! It pulls all tiles of one type to the bottom for easy matching.' },
-  // lvl 9:  6 gems, 8x8 diamond, introduce Cloud/Shuffle
-  { gems: 6, cols: 8, rows: 8, boardPct: 0.85, time: 90, target: 7500,
-    intro: 'New gem and new tool: Pink Cloud! Tap it to shuffle the entire board.' },
-  // lvl 10: 6 gems, 8x8 corners-cut, introduce Treasure Chest
-  { gems: 6, cols: 8, rows: 8, boardPct: 0.90, time: 90, target: 9000,
-    intro: 'Level 10! New tool: Treasure Chest — open it for coins or a surprise power-up!' },
+  // ── TRAINING ARC: Tool Introductions (levels 4-20) ──
+  // Level 4: Lightning (4-in-a-row)
+  { gems: 3, cols: 5, rows: 6, boardPct: 1.0, time: 100, moves: 35, target: 1200,
+    goals: [{ type: 'create_tool', toolNum: 2, count: 1, label: 'Create a Lightning Bolt' }, { type: 'match_any', count: 20 }],
+    toolIntro: 2,
+    intro: 'NEW TOOL: Lightning Bolt! Match 4 in a row to create one. It clears an entire row or column!' },
+  // Level 5: Potion (2x2 square)
+  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 110, moves: 35, target: 1500,
+    goals: [{ type: 'create_tool', toolNum: 6, count: 1, label: 'Create a Potion' }, { type: 'match_any', count: 25 }],
+    toolIntro: 6,
+    intro: 'NEW TOOL: Potion! Match a 2x2 square of the same gem to create one. It transforms nearby tiles!' },
+  // Level 6: Bomb (L/T shape)
+  { gems: 4, cols: 6, rows: 6, boardPct: 1.0, time: 110, moves: 35, target: 1800,
+    goals: [{ type: 'create_tool', toolNum: 1, count: 1, label: 'Create a Bomb' }, { type: 'match_any', count: 25 }],
+    toolIntro: 1,
+    intro: 'NEW TOOL: Bomb! Match an L or T shape to create one. It explodes a 3x3 area!' },
+  // Level 7: Rainbow Star (5-in-a-row)
+  { gems: 4, cols: 6, rows: 7, boardPct: 1.0, time: 120, moves: 40, target: 2200,
+    goals: [{ type: 'create_tool', toolNum: 3, count: 1, label: 'Create a Rainbow Star' }, { type: 'match_any', count: 30 }],
+    toolIntro: 3,
+    intro: 'NEW TOOL: Rainbow Star! Match 5 in a row! Swap it with any gem to clear ALL of that type!' },
+  // Level 8: Magic Wand (tap tool)
+  { gems: 5, cols: 6, rows: 7, boardPct: 1.0, time: 120, moves: 40, target: 2500,
+    goals: [{ type: 'use_tool', toolNum: 7, count: 1, label: 'Use the Magic Wand' }, { type: 'match_any', count: 30 }],
+    toolIntro: 7,
+    intro: 'NEW TOOL: Magic Wand! Tap it from your toolbar, then tap any tile to remove it instantly!' },
+  // Level 9: Magnet
+  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 130, moves: 40, target: 2800,
+    goals: [{ type: 'use_tool', toolNum: 4, count: 1, label: 'Use the Magnet' }, { type: 'match_any', count: 30 }],
+    toolIntro: 4,
+    intro: 'NEW TOOL: Magnet! It pulls all tiles of one type to the bottom for easy matching.' },
+  // Level 10: Stopwatch
+  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 120, moves: 40, target: 3200,
+    goals: [{ type: 'use_tool', toolNum: 5, count: 1, label: 'Use the Stopwatch' }, { type: 'match_any', count: 35 }],
+    toolIntro: 5,
+    intro: 'NEW TOOL: Stopwatch! Running low on time? Tap it to add 15 seconds!' },
+  // Level 11: Cloud/Shuffle
+  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 130, moves: 40, target: 3500,
+    goals: [{ type: 'use_tool', toolNum: 10, count: 1, label: 'Use the Cloud' }, { type: 'match_any', count: 35 }],
+    toolIntro: 10,
+    intro: 'NEW TOOL: Cloud! Tap it to shuffle the entire board when you are stuck.' },
+  // Level 12: Practice with tools so far
+  { gems: 5, cols: 7, rows: 7, boardPct: 1.0, time: 140, moves: 45, target: 4000,
+    goals: [{ type: 'match_any', count: 40 }, { type: 'score', count: 3000 }],
+    intro: 'Practice time! Use your tools to rack up a high score.' },
+  // Level 13: Treasure Chest
+  { gems: 6, cols: 7, rows: 7, boardPct: 1.0, time: 140, moves: 45, target: 4500,
+    goals: [{ type: 'use_tool', toolNum: 8, count: 1, label: 'Open a Treasure Chest' }, { type: 'match_any', count: 35 }],
+    toolIntro: 8,
+    intro: 'NEW TOOL: Treasure Chest! Open it for bonus coins or a surprise power-up!' },
+  // Level 14: Practice
+  { gems: 6, cols: 8, rows: 7, boardPct: 1.0, time: 150, moves: 45, target: 5000,
+    goals: [{ type: 'match_any', count: 45 }, { type: 'match_type', gemType: 0, count: 12 }],
+    intro: 'Bigger board! 6 gem types to track. Match carefully!' },
+  // Level 15: Slingshot
+  { gems: 6, cols: 8, rows: 8, boardPct: 1.0, time: 150, moves: 45, target: 5500,
+    goals: [{ type: 'use_tool', toolNum: 9, count: 1, label: 'Use the Slingshot' }, { type: 'match_any', count: 40 }],
+    toolIntro: 9,
+    intro: 'NEW TOOL: Slingshot! Clears an entire diagonal line of tiles. Great for tricky spots!' },
+  // Level 16: Practice
+  { gems: 6, cols: 8, rows: 8, boardPct: 1.0, time: 160, moves: 48, target: 6500,
+    goals: [{ type: 'match_any', count: 50 }, { type: 'score', count: 5000 }],
+    intro: 'The board is getting big! Chain combos for massive points!' },
+  // Level 17: Love Letter
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 160, moves: 48, target: 7500,
+    goals: [{ type: 'use_tool', toolNum: 11, count: 1, label: 'Use the Love Letter' }, { type: 'match_any', count: 40 }],
+    toolIntro: 11,
+    intro: 'ULTIMATE TOOL: Love Letter! It clears the ENTIRE board in a burst of hearts! Use wisely — it is rare!' },
+  // Levels 18-20: Mastery levels
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 170, moves: 50, target: 8500,
+    goals: [{ type: 'match_any', count: 55 }, { type: 'create_tool', toolNum: 2, count: 2, label: 'Create 2 Lightning Bolts' }],
+    intro: 'Mastery Level! All tools unlocked. Show your skills!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 170, moves: 50, target: 9500,
+    goals: [{ type: 'match_any', count: 50 }, { type: 'create_tool', toolNum: 1, count: 2, label: 'Create 2 Bombs' }],
+    intro: 'Shaped board! The diamond shape means less space — plan ahead!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 180, moves: 50, target: 12000,
+    goals: [{ type: 'match_any', count: 60 }, { type: 'score', count: 10000 }],
+    intro: 'Final training mission! Score 10,000 points. You are ready for what comes next...' },
 
-  // ── Challenge Arc (levels 11-15): Full board, harder goals ──
-  // lvl 11: 6 gems, 8x8 full, introduce Stopwatch tip
-  { gems: 6, cols: 8, rows: 8, boardPct: 1.0, time: 85,  target: 10500,
-    intro: 'Running low on time? Tap the Stopwatch in your toolbar to add 15 seconds!' },
-  // lvl 12: 6 gems, 8x8 cross shape, tighter time
-  { gems: 6, cols: 8, rows: 8, boardPct: 0.80, time: 80, target: 11400,
-    intro: 'The board has a tricky shape. Plan your moves carefully!' },
-  // lvl 13: 7 gems, 8x8 full, introduce Slingshot
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 85,  target: 12600,
-    intro: 'All gems unlocked! New tool: Slingshot — clears an entire diagonal line.' },
-  // lvl 14: 7 gems, 8x8 diamond, heavy obstacles
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 85, target: 14400,
-    intro: 'More obstacles than ever. Use Bombs and Lightning to break through!' },
-  // lvl 15: 7 gems, 8x8 full, introduce Love Letter
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 16500,
-    intro: 'New ultimate tool: Love Letter! It clears the ENTIRE board in a burst of hearts!' },
-
-  // ── Mastery Arc (levels 16-20): Expert play ──
-  // lvl 16: 7 gems, 8x8 corners-cut, tight timer
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.90, time: 75, target: 18000,
-    intro: 'Less time, bigger goals. Every second counts!' },
-  // lvl 17: 7 gems, 8x8 cross, obstacles + speed
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 80, target: 19500,
-    intro: 'A cross-shaped board with plenty of obstacles. Stay sharp!' },
-  // lvl 18: 7 gems, 8x8 full, very high target
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 85,  target: 22500,
-    intro: 'You are a match master! Can you beat this score?' },
-  // lvl 19: 7 gems, 8x8 diamond, hard mode
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 75, target: 25500,
-    intro: 'Diamond board, tight timer. Make every swap count!' },
-  // lvl 20: 7 gems, 8x8 full, ultimate challenge
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 90,  target: 30000,
-    intro: 'The ultimate challenge! Use all your skills to reach 30,000 points!' },
-
-  // ── Frozen Love (levels 21-23): Ice theme ──
-  // lvl 21: 7 gems, 8x8 diamond, heavy ice
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 200, moves: 48, target: 18000,
+  // ── OBJECT ARC: Obstacles & Hidden Objects (levels 21-50) ──
+  // Levels 21-23: Ice blocks introduced
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 180, moves: 48, target: 10000,
+    obstacleCount: 6, obstacleTypes: ['ice'],
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'ice', count: 6 }],
+    intro: 'NEW OBSTACLE: Ice Blocks! Match adjacent gems to crack them. 3 hits to break through!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 190, moves: 50, target: 12000,
     obstacleCount: 8, obstacleTypes: ['ice'],
-    intro: 'Frozen Love begins! The board is covered in ice — warm these frozen hearts with your matches!' },
-  // lvl 22: 8 gems, 8x8 cross, more ice
-  { gems: 8, cols: 8, rows: 8, boardPct: 0.80, time: 210, moves: 50, target: 22000,
-    obstacleCount: 11, obstacleTypes: ['ice'],
-    intro: 'The frost deepens. Every tile is locked in ice — can your love melt through?' },
-  // lvl 23: 7 gems, 8x8 diamond, max ice
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 220, moves: 52, target: 26000,
-    obstacleCount: 14, obstacleTypes: ['ice'],
-    intro: 'The Ice Queen\'s final stand! Shatter every frozen crystal to prove your love!' },
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'ice', count: 8 }, { type: 'match_any', count: 40 }],
+    intro: 'More ice! Use tools like Bombs and Lightning to shatter multiple ice blocks at once.' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 200, moves: 52, target: 14000,
+    obstacleCount: 10, obstacleTypes: ['ice'],
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'ice', count: 10 }, { type: 'match_any', count: 45 }],
+    intro: 'Ice everywhere! Focus on matching near the ice clusters.' },
 
-  // ── Crate Breaker (levels 24-26): Crate theme ──
-  // lvl 24: 7 gems, 8x8 full, heavy crates
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 210, moves: 50, target: 20000,
+  // Levels 24-26: Crates introduced
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 190, moves: 50, target: 12000,
+    obstacleCount: 6, obstacleTypes: ['crate'],
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'crate', count: 6 }],
+    intro: 'NEW OBSTACLE: Wooden Crates! Normal matches can\'t break them. Use your tools!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 200, moves: 52, target: 14000,
+    obstacleCount: 8, obstacleTypes: ['crate'],
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'crate', count: 8 }, { type: 'match_any', count: 35 }],
+    intro: 'More crates! Save your Bombs and Lightning for the crate clusters.' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 210, moves: 55, target: 16000,
     obstacleCount: 10, obstacleTypes: ['crate'],
-    intro: 'Crate Breaker! Crates can only be smashed with tools — use your Bombs and Lightning wisely!' },
-  // lvl 25: 6 gems, 8x8 full, more crates
-  { gems: 6, cols: 8, rows: 8, boardPct: 1.0, time: 220, moves: 52, target: 24000,
-    obstacleCount: 12, obstacleTypes: ['crate'],
-    intro: 'Even more crates! Remember: Slingshots and Bombs are your best friends here.' },
-  // lvl 26: 7 gems, 8x8 full, max crates
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 230, moves: 55, target: 28000,
-    obstacleCount: 15, obstacleTypes: ['crate'],
-    intro: 'The warehouse is packed! Break through 15 crates to find the love hidden inside.' },
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'crate', count: 10 }, { type: 'create_tool', toolNum: 1, count: 2, label: 'Create 2 Bombs' }],
+    intro: 'Crate challenge! Create Bombs to blast through the barricade.' },
 
-  // ── Love Letters (levels 27-29): Parcel theme ──
-  // lvl 27: 7 gems, 8x8 diamond, parcels + gifts
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 210, moves: 50, target: 22000,
-    obstacleCount: 8, obstacleTypes: ['parcel', 'giftbox'],
-    intro: 'Love Letters await! Unwrap the parcels to find sweet messages from your sweetheart.' },
-  // lvl 28: 7 gems, 8x8 corners-cut, more parcels
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.90, time: 220, moves: 52, target: 26000,
-    obstacleCount: 10, obstacleTypes: ['parcel', 'giftbox'],
-    intro: 'More love letters to deliver! Each parcel holds a piece of someone\'s heart.' },
-  // lvl 29: 7 gems, 8x8 full, max parcels
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 230, moves: 55, target: 30000,
-    obstacleCount: 12, obstacleTypes: ['parcel', 'giftbox'],
-    intro: 'The mailroom overflows with love! Clear every parcel to complete the delivery.' },
+  // Levels 27-29: Gift boxes & Parcels introduced
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 200, moves: 50, target: 14000,
+    obstacleCount: 6, obstacleTypes: ['giftbox'],
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'giftbox', count: 6 }],
+    intro: 'NEW OBSTACLE: Gift Boxes! Match next to them to unwrap the love inside!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.90, time: 210, moves: 52, target: 16000,
+    obstacleCount: 5, obstacleTypes: ['parcel'],
+    goals: [{ type: 'destroy_obstacle', obstacleType: 'parcel', count: 5 }, { type: 'match_any', count: 40 }],
+    intro: 'NEW OBSTACLE: Love Letter Parcels! Match next to them to open the letters!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 220, moves: 55, target: 18000,
+    obstacleCount: 8, obstacleTypes: ['giftbox', 'parcel'],
+    goals: [{ type: 'destroy_obstacle', count: 8 }, { type: 'match_any', count: 45 }],
+    intro: 'Gifts and parcels together! Clear them all!' },
 
-  // ── Gift Wrapped (levels 30-32): Gift box theme ──
-  // lvl 30: 7 gems, 8x8 diamond, gift boxes
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 230, moves: 52, target: 24000,
-    obstacleCount: 10, obstacleTypes: ['giftbox'],
-    intro: 'Gift Wrapped! Every gift box hides a surprise. Match next to them to unwrap the love!' },
-  // lvl 31: 7 gems, 8x8 corners-cut, more gifts
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.90, time: 240, moves: 55, target: 28000,
-    obstacleCount: 12, obstacleTypes: ['giftbox'],
-    intro: 'So many presents! Unwrap them all before time runs out!' },
-  // lvl 32: 7 gems, 8x8 full, max gifts
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 250, moves: 58, target: 33000,
-    obstacleCount: 14, obstacleTypes: ['giftbox'],
-    intro: 'It\'s a gift explosion! The board is stacked — can you open them all?' },
+  // Levels 30-32: Hidden objects introduced (1x1 fish under ice)
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 220, moves: 55, target: 16000,
+    obstacleCount: 8, obstacleTypes: ['ice'],
+    hiddenObjects: [
+      { r: 2, c: 3, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 5, c: 5, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'fish', count: 2 }, { type: 'destroy_obstacle', obstacleType: 'ice', count: 6 }],
+    intro: 'NEW: Something is trapped under the ice! Break the ice to rescue the fish!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 230, moves: 55, target: 18000,
+    obstacleCount: 10, obstacleTypes: ['ice'],
+    hiddenObjects: [
+      { r: 1, c: 2, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 3, c: 6, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 6, c: 4, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'fish', count: 3 }, { type: 'destroy_obstacle', obstacleType: 'ice', count: 8 }],
+    intro: '3 fish are trapped! Focus on the shimmering ice blocks.' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 240, moves: 58, target: 20000,
+    obstacleCount: 12, obstacleTypes: ['ice'],
+    hiddenObjects: [
+      { r: 2, c: 2, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 2, c: 5, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 5, c: 2, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 5, c: 5, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'fish', count: 4 }, { type: 'match_any', count: 50 }],
+    intro: '4 fish on a diamond board! Free them all before time runs out!' },
 
-  // ── The Gauntlet (levels 33-35): Mixed obstacles, tight ──
-  // lvl 33: 7 gems, 8x8 cross, all obstacle types
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 200, moves: 45, target: 26000,
-    obstacleCount: 12, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'The Gauntlet begins! Ice, crates, gifts, and parcels — all at once. Survive!' },
-  // lvl 34: 7 gems, 8x8 diamond, more mixed
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 210, moves: 48, target: 30000,
-    obstacleCount: 14, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'The Gauntlet intensifies! Every obstacle type stands between you and victory.' },
-  // lvl 35: 7 gems, 8x8 cross, max mixed
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 220, moves: 50, target: 35000,
+  // Levels 33-35: 2x2 hidden objects (hearts under crates)
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 230, moves: 55, target: 18000,
+    obstacleCount: 10, obstacleTypes: ['crate', 'ice'],
+    hiddenObjects: [
+      { r: 3, c: 3, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'heart', count: 1 }, { type: 'destroy_obstacle', count: 8 }],
+    intro: 'NEW: A big heart is hidden under 4 crates! Clear all 4 to free it!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 240, moves: 58, target: 20000,
+    obstacleCount: 12, obstacleTypes: ['crate', 'ice'],
+    hiddenObjects: [
+      { r: 1, c: 1, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+      { r: 4, c: 5, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 6, c: 2, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'heart', count: 1 }, { type: 'free_hidden', objectType: 'fish', count: 2 }],
+    intro: 'Free the heart AND rescue the fish! Hearts need 4 crates cleared, fish need ice.' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 250, moves: 60, target: 22000,
+    obstacleCount: 14, obstacleTypes: ['crate', 'ice', 'giftbox'],
+    hiddenObjects: [
+      { r: 2, c: 2, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+      { r: 2, c: 5, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'heart', count: 2 }, { type: 'destroy_obstacle', count: 10 }],
+    intro: 'Two hidden hearts! Blast through the crates with everything you have!' },
+
+  // Levels 36-38: 3x3 hidden objects (stars under mixed obstacles)
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 250, moves: 58, target: 22000,
+    obstacleCount: 14, obstacleTypes: ['ice', 'crate', 'giftbox'],
+    hiddenObjects: [
+      { r: 2, c: 2, type: 'star', size: 3, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'star', count: 1 }, { type: 'destroy_obstacle', count: 12 }],
+    intro: 'NEW: A massive star is buried under 9 tiles! Clear the entire 3x3 area!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 260, moves: 60, target: 25000,
+    obstacleCount: 16, obstacleTypes: ['ice', 'crate', 'giftbox'],
+    hiddenObjects: [
+      { r: 1, c: 1, type: 'star', size: 3, coverType: 'crate', coverHp: 3 },
+      { r: 5, c: 5, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'star', count: 1 }, { type: 'free_hidden', objectType: 'fish', count: 1 }, { type: 'match_any', count: 50 }],
+    intro: 'A star AND a fish to rescue! The star needs 9 crates cleared!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 270, moves: 62, target: 28000,
+    obstacleCount: 18, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
+    hiddenObjects: [
+      { r: 2, c: 2, type: 'star', size: 3, coverType: 'ice', coverHp: 3 },
+      { r: 0, c: 0, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 2 }, { type: 'destroy_obstacle', count: 15 }],
+    intro: 'Diamond board chaos! Free the star and the heart. Every tool matters!' },
+
+  // Levels 39-41: Multi-layered + strategic
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 240, moves: 55, target: 24000,
+    mode: 'moves', obstacleCount: 12, obstacleTypes: ['ice', 'crate'],
+    hiddenObjects: [
+      { r: 3, c: 3, type: 'gem', size: 2, coverType: 'ice', coverHp: 3 },
+      { r: 1, c: 6, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 6, c: 1, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 3 }, { type: 'destroy_obstacle', count: 10 }],
+    intro: 'Careful moves only! Free 3 hidden objects in limited moves. Plan each swap!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.90, time: 250, moves: 55, target: 26000,
+    mode: 'moves', obstacleCount: 14, obstacleTypes: ['ice', 'crate', 'giftbox'],
+    hiddenObjects: [
+      { r: 2, c: 1, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+      { r: 5, c: 5, type: 'gem', size: 2, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 2 }, { type: 'match_type', gemType: 0, count: 15 }],
+    intro: 'Two big treasures to uncover! Every move counts.' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 260, moves: 58, target: 28000,
     obstacleCount: 16, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'The final Gauntlet! 16 obstacles on a cross board. Only the bravest survive!' },
+    hiddenObjects: [
+      { r: 0, c: 0, type: 'star', size: 3, coverType: 'crate', coverHp: 3 },
+      { r: 0, c: 5, type: 'heart', size: 2, coverType: 'ice', coverHp: 3 },
+      { r: 5, c: 0, type: 'heart', size: 2, coverType: 'giftbox', coverHp: 3 },
+      { r: 6, c: 6, type: 'fish', size: 1, coverType: 'parcel', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 4 }, { type: 'destroy_obstacle', count: 14 }],
+    intro: 'Maximum rescue mission! 4 hidden objects scattered across the board!' },
 
-  // ── Speed Dating (levels 36-38): Timer-only, fast-paced ──
-  // lvl 36: 7 gems, 8x8 full, short timer
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 120, moves: 55, target: 28000,
-    mode: 'timer', obstacleCount: 4, obstacleTypes: ['ice', 'crate'],
-    intro: 'Speed Dating! You have just 2 minutes — match fast and match smart!' },
-  // lvl 37: 7 gems, 8x8 full, shorter timer
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 135, moves: 55, target: 32000,
-    mode: 'timer', obstacleCount: 5, obstacleTypes: ['ice', 'crate'],
-    intro: 'The clock is ticking louder! Can you score 32K in this speed round?' },
-  // lvl 38: 7 gems, 8x8 full, tight timer
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 150, moves: 55, target: 37000,
-    mode: 'timer', obstacleCount: 6, obstacleTypes: ['ice', 'crate', 'giftbox'],
-    intro: 'Final speed round! Every second is precious — make each swap a big one!' },
+  // Levels 42-44: Speed challenge with goals
+  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 120, moves: 55, target: 20000,
+    mode: 'timer', obstacleCount: 8, obstacleTypes: ['ice', 'crate'],
+    hiddenObjects: [
+      { r: 3, c: 3, type: 'fish', size: 1, coverType: 'ice', coverHp: 2 },
+      { r: 4, c: 4, type: 'fish', size: 1, coverType: 'ice', coverHp: 2 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'fish', count: 2 }, { type: 'destroy_obstacle', count: 6 }],
+    intro: 'Speed rescue! Free 2 fish in just 2 minutes! The ice is thinner this time.' },
+  { gems: 6, cols: 8, rows: 8, boardPct: 1.0, time: 135, moves: 55, target: 24000,
+    mode: 'timer', obstacleCount: 10, obstacleTypes: ['ice', 'crate'],
+    hiddenObjects: [
+      { r: 2, c: 2, type: 'heart', size: 2, coverType: 'ice', coverHp: 2 },
+      { r: 5, c: 5, type: 'fish', size: 1, coverType: 'crate', coverHp: 2 },
+    ],
+    goals: [{ type: 'free_hidden', count: 2 }, { type: 'score', count: 15000 }],
+    intro: 'Race against time! Free the treasures AND hit 15,000 points!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 150, moves: 55, target: 28000,
+    mode: 'timer', obstacleCount: 12, obstacleTypes: ['ice', 'crate', 'giftbox'],
+    hiddenObjects: [
+      { r: 2, c: 2, type: 'star', size: 3, coverType: 'ice', coverHp: 2 },
+    ],
+    goals: [{ type: 'free_hidden', objectType: 'star', count: 1 }, { type: 'destroy_obstacle', count: 10 }],
+    intro: 'Cross board speed run! Uncover the star before the clock runs out!' },
 
-  // ── Careful Moves (levels 39-41): Moves-only, strategic ──
-  // lvl 39: 7 gems, 8x8 diamond, limited moves
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 240, moves: 30, target: 25000,
-    mode: 'moves', obstacleCount: 6, obstacleTypes: ['ice', 'giftbox'],
-    intro: 'Careful Moves! Only 30 swaps allowed. Think before you match!' },
-  // lvl 40: 7 gems, 8x8 corners-cut, fewer moves
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.90, time: 240, moves: 32, target: 30000,
-    mode: 'moves', obstacleCount: 8, obstacleTypes: ['ice', 'crate', 'giftbox'],
-    intro: 'Every move must count! Plan your combos to hit 30K in just 32 moves.' },
-  // lvl 41: 7 gems, 8x8 full, very limited moves
-  { gems: 7, cols: 8, rows: 8, boardPct: 1.0, time: 240, moves: 35, target: 35000,
-    mode: 'moves', obstacleCount: 10, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'The ultimate puzzle! 35 moves, 10 obstacles, and a sky-high target. Strategize!' },
-
-  // ── Tiny Boards (levels 42-44): Small boards, big challenge ──
-  // lvl 42: 5 gems, 6x6 full, dense obstacles
-  { gems: 5, cols: 6, rows: 6, boardPct: 1.0, time: 250, moves: 55, target: 15000,
-    obstacleCount: 6, obstacleTypes: ['ice', 'crate'],
-    intro: 'Tiny Board! A small 6x6 grid with obstacles everywhere. It\'s cozy in here!' },
-  // lvl 43: 6 gems, 5x5 full, very dense
-  { gems: 6, cols: 5, rows: 5, boardPct: 1.0, time: 260, moves: 58, target: 18000,
-    obstacleCount: 8, obstacleTypes: ['ice', 'crate', 'giftbox'],
-    intro: 'Even tinier! A 5x5 board packed tight. Every tile matters!' },
-  // lvl 44: 6 gems, 6x6 full, max density
-  { gems: 6, cols: 6, rows: 6, boardPct: 1.0, time: 270, moves: 60, target: 22000,
-    obstacleCount: 10, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'The tiniest challenge! A cramped board loaded with obstacles. Good luck!' },
-
-  // ── Ice Fortress (levels 45-47): Ice + Crates combined ──
-  // lvl 45: 7 gems, 8x8 diamond, heavy ice + crates
+  // Levels 45-47: Expert mixed challenges
   { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 250, moves: 55, target: 30000,
     obstacleCount: 14, obstacleTypes: ['ice', 'crate'],
-    intro: 'The Ice Fortress! Frozen walls and wooden crates block your path. Break through!' },
-  // lvl 46: 7 gems, 8x8 diamond, more ice + crates
+    hiddenObjects: [
+      { r: 1, c: 1, type: 'star', size: 3, coverType: 'ice', coverHp: 3 },
+      { r: 1, c: 5, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+      { r: 5, c: 1, type: 'heart', size: 2, coverType: 'crate', coverHp: 3 },
+      { r: 6, c: 6, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 4 }, { type: 'score', count: 20000 }],
+    intro: 'Expert challenge! 4 treasures hidden across a diamond board. Score 20K too!' },
   { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 260, moves: 58, target: 35000,
-    obstacleCount: 16, obstacleTypes: ['ice', 'crate'],
-    intro: 'The fortress grows stronger! Smash the crates with tools, melt the ice with matches!' },
-  // lvl 47: 7 gems, 8x8 diamond, max fortress
+    obstacleCount: 16, obstacleTypes: ['ice', 'crate', 'giftbox'],
+    hiddenObjects: [
+      { r: 2, c: 2, type: 'star', size: 3, coverType: 'crate', coverHp: 3 },
+      { r: 0, c: 6, type: 'gem', size: 2, coverType: 'ice', coverHp: 3 },
+      { r: 6, c: 0, type: 'gem', size: 2, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 3 }, { type: 'destroy_obstacle', count: 14 }],
+    intro: 'Triple rescue on a diamond! The star needs 9 clears, the gems need 4 each!' },
   { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 270, moves: 60, target: 40000,
-    obstacleCount: 18, obstacleTypes: ['ice', 'crate'],
-    intro: 'The final fortress! 18 obstacles of ice and wood. Only a true hero can conquer this!' },
-
-  // ── Ultimate Love (levels 48-50): Grand finale ──
-  // lvl 48: 7 gems, 8x8 cross, everything maxed
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 260, moves: 58, target: 35000,
-    obstacleCount: 15, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'Ultimate Love begins! Every obstacle, every gem, every challenge — all at once!' },
-  // lvl 49: 7 gems, 8x8 diamond, near-max
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 270, moves: 60, target: 42000,
-    obstacleCount: 16, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'Almost there! The penultimate challenge. Dig deep and match with everything you\'ve got!' },
-  // lvl 50: 7 gems, 8x8 cross, the grand finale
-  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 280, moves: 62, target: 50000,
     obstacleCount: 18, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
-    intro: 'LEVEL 50 — THE GRAND FINALE! 50,000 points, 18 obstacles, shaped board. You are the ultimate match master!' },
+    hiddenObjects: [
+      { r: 0, c: 0, type: 'star', size: 3, coverType: 'ice', coverHp: 3 },
+      { r: 0, c: 5, type: 'star', size: 3, coverType: 'crate', coverHp: 3 },
+      { r: 5, c: 2, type: 'heart', size: 2, coverType: 'giftbox', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 3 }, { type: 'destroy_obstacle', count: 16 }],
+    intro: 'Fortress of obstacles! Two giant stars and a heart — break through everything!' },
 
-  // ── Test Level (51): Unlocked, for testing bigger boards ──
+  // Levels 48-50: Grand Finale
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 260, moves: 58, target: 35000,
+    obstacleCount: 16, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
+    hiddenObjects: [
+      { r: 1, c: 1, type: 'star', size: 3, coverType: 'crate', coverHp: 3 },
+      { r: 1, c: 5, type: 'heart', size: 2, coverType: 'ice', coverHp: 3 },
+      { r: 5, c: 1, type: 'gem', size: 2, coverType: 'giftbox', coverHp: 3 },
+      { r: 6, c: 6, type: 'fish', size: 1, coverType: 'parcel', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 4 }, { type: 'score', count: 25000 }],
+    intro: 'The finale begins! Every type of treasure, every type of obstacle!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.85, time: 270, moves: 60, target: 42000,
+    obstacleCount: 18, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
+    hiddenObjects: [
+      { r: 0, c: 0, type: 'star', size: 3, coverType: 'ice', coverHp: 3 },
+      { r: 0, c: 5, type: 'star', size: 3, coverType: 'crate', coverHp: 3 },
+      { r: 5, c: 0, type: 'heart', size: 2, coverType: 'giftbox', coverHp: 3 },
+      { r: 5, c: 5, type: 'heart', size: 2, coverType: 'parcel', coverHp: 3 },
+      { r: 4, c: 3, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 5 }, { type: 'destroy_obstacle', count: 16 }],
+    intro: 'Almost there! 5 hidden treasures on a diamond board. Dig deep!' },
+  { gems: 7, cols: 8, rows: 8, boardPct: 0.80, time: 300, moves: 65, target: 50000,
+    obstacleCount: 20, obstacleTypes: ['ice', 'crate', 'giftbox', 'parcel'],
+    hiddenObjects: [
+      { r: 0, c: 0, type: 'star', size: 3, coverType: 'ice', coverHp: 3 },
+      { r: 0, c: 5, type: 'star', size: 3, coverType: 'crate', coverHp: 3 },
+      { r: 5, c: 0, type: 'gem', size: 3, coverType: 'giftbox', coverHp: 3 },
+      { r: 4, c: 5, type: 'heart', size: 2, coverType: 'parcel', coverHp: 3 },
+      { r: 7, c: 0, type: 'fish', size: 1, coverType: 'ice', coverHp: 3 },
+      { r: 7, c: 7, type: 'fish', size: 1, coverType: 'crate', coverHp: 3 },
+    ],
+    goals: [{ type: 'free_hidden', count: 6 }, { type: 'destroy_obstacle', count: 18 }, { type: 'score', count: 40000 }],
+    intro: 'LEVEL 50 — THE GRAND FINALE! 6 treasures, 20 obstacles, 40K points. You are the ULTIMATE match master!' },
+
+  // ── Test Levels (51-54): Always unlocked ──
   { gems: 3, cols: 5, rows: 7, boardPct: 1.0, time: 120, moves: 40, target: 2000,
-    intro: 'Area 51! A big 5×7 board to explore.' },
-
-  // ── Test Level (52): Unlocked, for testing bigger boards ──
+    goals: [{ type: 'match_any', count: 20 }],
+    intro: 'Area 51! A big 5x7 board to explore.' },
   { gems: 3, cols: 5, rows: 8, boardPct: 1.0, time: 120, moves: 40, target: 2000,
-    intro: 'Level 52! A massive 5×8 board.' },
-
-  // ── Test Level (53): Unlocked, 8×12 big grid ──
+    goals: [{ type: 'match_any', count: 25 }],
+    intro: 'Level 52! A massive 5x8 board.' },
   { gems: 4, cols: 8, rows: 12, boardPct: 1.0, time: 150, moves: 50, target: 3000,
-    intro: 'Level 53! An 8×12 mega board.' },
-
-  // ── Test Level (54): Unlocked, 8×13 biggest grid ──
+    goals: [{ type: 'match_any', count: 40 }],
+    intro: 'Level 53! An 8x12 mega board.' },
   { gems: 4, cols: 8, rows: 13, boardPct: 1.0, time: 150, moves: 50, target: 3000,
-    intro: 'Level 54! An 8×13 ultra board.' },
+    goals: [{ type: 'match_any', count: 45 }],
+    intro: 'Level 54! An 8x13 ultra board.' },
 ];
 
 // ── Procedural Level Generator ──
@@ -605,15 +727,173 @@ function generateLevelConfig(lvl) {
     intro = mid[Math.floor(rand() * mid.length)] + ` ${board.cols}×${board.rows} board.`;
   }
 
+  // ── Start pattern ──
+  // Generate an interesting initial gem arrangement
+  const startPattern = generateStartPattern(lvl, board.rows, board.cols, gems, rand);
+
+  // ── Goals ──
+  const goals = [];
+  // Always at least one match goal
+  const targetGem = Math.floor(rand() * gems);
+  goals.push({ type: 'match_type', gemType: targetGem, count: 10 + Math.floor(diff * 25) });
+
+  // If obstacles present, add destroy goal
+  if (obstacleCount > 0 && obstacleTypes.length > 0) {
+    const targetObs = obstacleTypes[Math.floor(rand() * obstacleTypes.length)];
+    goals.push({ type: 'destroy_obstacle', obstacleType: targetObs,
+                 count: Math.max(2, Math.floor(obstacleCount * 0.6)) });
+  }
+
+  // Hidden objects for harder levels
+  let procHiddenObjects = undefined;
+  if (diff > 0.4 && obstacleCount >= 4) {
+    procHiddenObjects = [];
+    const hiddenTypes = ['fish', 'heart', 'star', 'gem'];
+    const hiddenType = hiddenTypes[Math.floor(rand() * hiddenTypes.length)];
+    const maxSize = diff > 0.7 ? 3 : diff > 0.5 ? 2 : 1;
+    const numHidden = 1 + Math.floor(rand() * Math.min(3, Math.floor(diff * 4)));
+    const coverTypes = obstacleTypes.length > 0 ? obstacleTypes : ['ice'];
+
+    for (let hi = 0; hi < numHidden; hi++) {
+      const size = Math.min(maxSize, 1 + Math.floor(rand() * maxSize));
+      const maxR = board.rows - size;
+      const maxC = board.cols - size;
+      if (maxR < 0 || maxC < 0) continue;
+      const hr = Math.floor(rand() * (maxR + 1));
+      const hc = Math.floor(rand() * (maxC + 1));
+      const cover = coverTypes[Math.floor(rand() * coverTypes.length)];
+      procHiddenObjects.push({ r: hr, c: hc, type: hiddenType, size, coverType: cover, coverHp: 3 });
+    }
+    goals.push({ type: 'free_hidden', objectType: hiddenType, count: numHidden });
+  }
+
+  // Boss levels get a score goal too
+  if (isBoss) {
+    goals.push({ type: 'score', count: target });
+  }
+
   return {
     gems, cols: board.cols, rows: board.rows, boardPct,
     time, moves, target,
     obstacleCount: obstacleCount || undefined,
     obstacleTypes: obstacleTypes.length ? obstacleTypes : undefined,
     intro,
-    generated: true, // flag so we know this was procedurally made
+    generated: true,
     isBoss,
+    startPattern,
+    goals,
+    hiddenObjects: procHiddenObjects,
   };
+}
+
+// ── Start Pattern Generator ──
+// Creates a 2D array of gem type indices for the initial board layout.
+// Patterns are decorative — after first match, normal random fill takes over.
+function generateStartPattern(lvl, rows, cols, numGems, rand) {
+  // Pick a pattern type deterministically from the level number
+  const patterns = [
+    'hStripes', 'vStripes', 'checkerboard', 'diamond', 'rings',
+    'gradient', 'spiral', 'zigzag', 'waves', 'quadrants',
+    'diagonalStripes', 'heart', 'border', 'dots', 'columns',
+  ];
+  const patIdx = Math.floor(rand() * patterns.length);
+  const patType = patterns[patIdx];
+  const grid = [];
+
+  for (let r = 0; r < rows; r++) {
+    grid[r] = [];
+    for (let c = 0; c < cols; c++) {
+      grid[r][c] = getPatternGem(patType, r, c, rows, cols, numGems, rand);
+    }
+  }
+
+  // Bust any 3-in-a-row that the pattern might create
+  // Do multiple passes to clean up
+  for (let pass = 0; pass < 3; pass++) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (hasMatch3(grid, r, c, rows, cols)) {
+          // Shift to next gem type
+          grid[r][c] = (grid[r][c] + 1) % numGems;
+          // If still matching, try another
+          if (hasMatch3(grid, r, c, rows, cols)) {
+            grid[r][c] = (grid[r][c] + 1) % numGems;
+          }
+        }
+      }
+    }
+  }
+
+  grid._patternName = patType;
+  return grid;
+}
+
+function hasMatch3(grid, r, c, rows, cols) {
+  const t = grid[r][c];
+  // Horizontal
+  if (c >= 2 && grid[r][c-1] === t && grid[r][c-2] === t) return true;
+  if (c >= 1 && c < cols-1 && grid[r][c-1] === t && grid[r][c+1] === t) return true;
+  if (c < cols-2 && grid[r][c+1] === t && grid[r][c+2] === t) return true;
+  // Vertical
+  if (r >= 2 && grid[r-1][c] === t && grid[r-2][c] === t) return true;
+  if (r >= 1 && r < rows-1 && grid[r-1][c] === t && grid[r+1][c] === t) return true;
+  if (r < rows-2 && grid[r+1][c] === t && grid[r+2][c] === t) return true;
+  return false;
+}
+
+function getPatternGem(pat, r, c, rows, cols, n, rand) {
+  const cr = (rows - 1) / 2, cc = (cols - 1) / 2;
+  switch (pat) {
+    case 'hStripes':
+      return r % n;
+    case 'vStripes':
+      return c % n;
+    case 'checkerboard':
+      return (r + c) % Math.min(n, 3);
+    case 'diamond': {
+      const dist = Math.abs(r - cr) + Math.abs(c - cc);
+      return Math.floor(dist) % n;
+    }
+    case 'rings': {
+      const dist = Math.max(Math.abs(r - cr), Math.abs(c - cc));
+      return Math.floor(dist) % n;
+    }
+    case 'gradient':
+      return Math.floor((r / rows) * n) % n;
+    case 'spiral': {
+      const angle = Math.atan2(r - cr, c - cc);
+      const dist = Math.sqrt((r-cr)**2 + (c-cc)**2);
+      return Math.floor((angle / Math.PI + dist * 0.5) * n / 3) % n;
+    }
+    case 'zigzag':
+      return (r + (r % 2 === 0 ? c : cols - 1 - c)) % n;
+    case 'waves':
+      return Math.floor(r + Math.sin(c * 1.2) * 2 + n) % n;
+    case 'quadrants': {
+      const qr = r < rows / 2 ? 0 : 1;
+      const qc = c < cols / 2 ? 0 : 1;
+      return (qr * 2 + qc) % n;
+    }
+    case 'diagonalStripes':
+      return (r + c) % n;
+    case 'heart': {
+      // Heart-ish shape uses 2 gem types: inside vs outside
+      const nr = (r - cr) / (rows/2), nc = (c - cc) / (cols/2);
+      const h = (nr*nr + nc*nc - 1)**3 - nr*nr * nc*nc*nc;
+      return h < 0 ? 0 : (r + c) % Math.max(2, n - 1) + 1;
+    }
+    case 'border': {
+      const isBorder = r === 0 || r === rows-1 || c === 0 || c === cols-1;
+      const isInner = r === 1 || r === rows-2 || c === 1 || c === cols-2;
+      return isBorder ? 0 : isInner ? 1 % n : (r + c) % Math.max(1, n - 2) + 2;
+    }
+    case 'dots':
+      return (r % 3 === 1 && c % 3 === 1) ? 0 : ((r + c) % (n - 1)) + 1;
+    case 'columns':
+      return (c % 2 === 0) ? Math.floor(r / 2) % n : (Math.floor(r / 2) + 1) % n;
+    default:
+      return Math.floor(rand() * n);
+  }
 }
 
 function getLevelConfig(lvl) {
@@ -1300,22 +1580,243 @@ let cascadeLevel = 0;
 let scorePopups = [];
 let selectPulse = 0;
 
+// ── Goal System ──
+let goalProgress = [];      // [{type, current, target, completed, ...details}]
+let hiddenObjects = [];     // 2D array: hiddenObjects[r][c] = {type, id, size, cells, freed} or null
+let handicapMarks = 0;      // how many handicap marks on current level
+let handicapActive = false;  // is handicap bonus active right now
+
+// Hidden object types (what's buried under obstacles)
+const HIDDEN_OBJECT_TYPES = {
+  fish:  { name: 'Trapped Fish', emoji: '🐟', color: '#64b5f6' },
+  heart: { name: 'Hidden Heart', emoji: '💖', color: '#ef5350' },
+  star:  { name: 'Lucky Star',   emoji: '⭐', color: '#ffd54f' },
+  gem:   { name: 'Buried Gem',   emoji: '💎', color: '#ab47bc' },
+};
+
+// Theme colors that rotate for procedural levels
+const LEVEL_THEMES = [
+  { name: 'Rose',    bg1: '#ffe0ec', bg2: '#ffc2d4', bg3: '#ffb3c6', accent: '#e91e63' },
+  { name: 'Ocean',   bg1: '#e0f7fa', bg2: '#b2ebf2', bg3: '#80deea', accent: '#00bcd4' },
+  { name: 'Garden',  bg1: '#e8f5e9', bg2: '#c8e6c9', bg3: '#a5d6a7', accent: '#4caf50' },
+  { name: 'Sunset',  bg1: '#fff3e0', bg2: '#ffe0b2', bg3: '#ffcc80', accent: '#ff9800' },
+  { name: 'Royal',   bg1: '#f3e5f5', bg2: '#e1bee7', bg3: '#ce93d8', accent: '#9c27b0' },
+  { name: 'Night',   bg1: '#e8eaf6', bg2: '#c5cae9', bg3: '#9fa8da', accent: '#3f51b5' },
+  { name: 'Coral',   bg1: '#fce4ec', bg2: '#f8bbd0', bg3: '#f48fb1', accent: '#e91e63' },
+  { name: 'Gold',    bg1: '#fffde7', bg2: '#fff9c4', bg3: '#fff176', accent: '#ffc107' },
+];
+
+function initGoalProgress() {
+  const cfg = getLevelConfig(level);
+  goalProgress = [];
+  if (!cfg.goals || cfg.goals.length === 0) return;
+  for (const g of cfg.goals) {
+    goalProgress.push({
+      type: g.type,
+      current: 0,
+      target: g.count,
+      completed: false,
+      gemType: g.gemType,
+      obstacleType: g.obstacleType,
+      objectType: g.objectType,
+      label: g.label || '',
+      toolNum: g.toolNum,
+    });
+  }
+}
+
+function updateGoalProgress(eventType, details) {
+  for (const g of goalProgress) {
+    if (g.completed) continue;
+    let matched = false;
+    switch (g.type) {
+      case 'match_type':
+        if (eventType === 'gem_cleared' && details.gemType === g.gemType) matched = true;
+        break;
+      case 'match_any':
+        if (eventType === 'gem_cleared') matched = true;
+        break;
+      case 'destroy_obstacle':
+        if (eventType === 'obstacle_destroyed' && (!g.obstacleType || details.obstacleType === g.obstacleType)) matched = true;
+        break;
+      case 'free_hidden':
+        if (eventType === 'object_freed' && (!g.objectType || details.objectType === g.objectType)) matched = true;
+        break;
+      case 'create_tool':
+        if (eventType === 'tool_created' && details.toolNum === g.toolNum) matched = true;
+        break;
+      case 'use_tool':
+        if (eventType === 'tool_used' && details.toolNum === g.toolNum) matched = true;
+        break;
+      case 'score':
+        g.current = score;
+        if (g.current >= g.target) g.completed = true;
+        continue;
+    }
+    if (matched) {
+      g.current++;
+      if (g.current >= g.target) g.completed = true;
+    }
+  }
+}
+
+function checkAllGoalsComplete() {
+  if (goalProgress.length === 0) return false;
+  return goalProgress.every(g => g.completed);
+}
+
+function getGoalLabel(g) {
+  switch (g.type) {
+    case 'match_type': {
+      const gemName = TILE_TYPES[g.gemType] ? TILE_TYPES[g.gemType].name : 'gems';
+      return `Match ${g.target} ${gemName}`;
+    }
+    case 'match_any': return `Match ${g.target} gems`;
+    case 'destroy_obstacle': {
+      const obsName = g.obstacleType ? (g.obstacleType.charAt(0).toUpperCase() + g.obstacleType.slice(1)) : 'obstacles';
+      return `Destroy ${g.target} ${obsName}`;
+    }
+    case 'free_hidden': {
+      const objDef = HIDDEN_OBJECT_TYPES[g.objectType];
+      return `Free ${g.target} ${objDef ? objDef.name : 'objects'}`;
+    }
+    case 'create_tool': {
+      const tool = TOOLS.find(t => t.tool === g.toolNum);
+      return `Create ${g.target} ${tool ? tool.name : 'tool'}`;
+    }
+    case 'use_tool': {
+      const tool = TOOLS.find(t => t.tool === g.toolNum);
+      return `Use ${tool ? tool.name : 'tool'}`;
+    }
+    case 'score': return `Score ${g.target.toLocaleString()} points`;
+    default: return g.label || 'Complete goal';
+  }
+}
+
+function initHiddenObjects() {
+  hiddenObjects = [];
+  for (let r = 0; r < ROWS; r++) {
+    hiddenObjects[r] = [];
+    for (let c = 0; c < COLS; c++) hiddenObjects[r][c] = null;
+  }
+  const cfg = getLevelConfig(level);
+  if (!cfg.hiddenObjects) return;
+
+  let objId = 0;
+  for (const ho of cfg.hiddenObjects) {
+    const size = ho.size || 1;
+    const cells = [];
+    for (let dr = 0; dr < size; dr++) {
+      for (let dc = 0; dc < size; dc++) {
+        const r = ho.r + dr, c = ho.c + dc;
+        if (r < ROWS && c < COLS && boardMask[r] && boardMask[r][c]) {
+          cells.push({r, c});
+        }
+      }
+    }
+    const obj = { type: ho.type, id: objId++, size, cells, freed: false, originR: ho.r, originC: ho.c };
+    for (const cell of cells) {
+      hiddenObjects[cell.r][cell.c] = obj;
+      if (!obstacles[cell.r][cell.c] && ho.coverType) {
+        const def = OBSTACLE_TYPES[ho.coverType];
+        if (def) {
+          obstacles[cell.r][cell.c] = { type: ho.coverType, hp: ho.coverHp || def.maxHp, maxHp: def.maxHp };
+        }
+      }
+    }
+  }
+}
+
+function revealHiddenObject(r, c) {
+  if (!hiddenObjects[r] || !hiddenObjects[r][c]) return;
+  const obj = hiddenObjects[r][c];
+  if (!obj || obj.freed) return;
+  const allClear = obj.cells.every(cell => !obstacles[cell.r][cell.c]);
+  if (!allClear) return;
+
+  obj.freed = true;
+  for (const cell of obj.cells) {
+    hiddenObjects[cell.r][cell.c] = null;
+  }
+  updateGoalProgress('object_freed', { objectType: obj.type, id: obj.id });
+  const objDef = HIDDEN_OBJECT_TYPES[obj.type];
+  const cx = boardX + (obj.originC + (obj.size - 1) / 2) * tileSize + tileSize / 2;
+  const cy = boardY + (obj.originR + (obj.size - 1) / 2) * tileSize + tileSize / 2;
+  scorePopups.push({
+    x: cx, y: cy,
+    text: (objDef ? objDef.emoji : '✨') + ' Freed!',
+    alpha: 1, dy: 0,
+  });
+  triggerScreenShake(4);
+  sfxLevelComplete();
+}
+
+function getLevelTheme(lvl) {
+  if (lvl <= 50) return LEVEL_THEMES[0];
+  const cycleNum = Math.floor((lvl - 51) / 20);
+  return LEVEL_THEMES[cycleNum % LEVEL_THEMES.length];
+}
+
+// Handicap tracking per level (stored in localStorage)
+function getHandicapCount(lvl) {
+  try {
+    const data = JSON.parse(localStorage.getItem('lovematch_handicaps') || '{}');
+    return data[lvl] || 0;
+  } catch(e) { return 0; }
+}
+
+function addHandicapMark(lvl) {
+  try {
+    const data = JSON.parse(localStorage.getItem('lovematch_handicaps') || '{}');
+    data[lvl] = (data[lvl] || 0) + 1;
+    localStorage.setItem('lovematch_handicaps', JSON.stringify(data));
+    return data[lvl];
+  } catch(e) { return 1; }
+}
+
+function getHandicapBonus(marks) {
+  return {
+    timeBonus: marks * 15,
+    movesBonus: marks * 5,
+    pointMultiplier: 1 + marks * 0.2,
+    goalReduction: Math.min(marks * 0.1, 0.3),
+  };
+}
+
+function applyHandicap(cfg, marks) {
+  if (marks <= 0) return cfg;
+  const bonus = getHandicapBonus(marks);
+  const c = { ...cfg };
+  c.time = Math.round(c.time + bonus.timeBonus);
+  c.moves = Math.round(c.moves + bonus.movesBonus);
+  c._handicapMarks = marks;
+  c._pointMultiplier = bonus.pointMultiplier;
+  if (c.goals) {
+    c.goals = c.goals.map(g => ({
+      ...g,
+      count: Math.max(1, Math.round(g.count * (1 - bonus.goalReduction))),
+    }));
+  }
+  return c;
+}
+
 // Tool inventory: each tool has a count (start with some for testing)
 let toolInventory = {};
+let toolInventorySnapshot = {}; // snapshot at level start for restoring on failure
 
 // Tools unlock progressively: tool number → minimum level to appear
 const TOOL_UNLOCK_LEVEL = {
-  1: 4,   // Bomb — unlocked at level 4 (when L/T match is taught)
-  2: 2,   // Lightning — unlocked at level 2 (when 4-row is taught)
-  3: 5,   // Rainbow Star — unlocked at level 5
-  4: 8,   // Magnet — unlocked at level 8
-  5: 11,  // Stopwatch — unlocked at level 11 (when tip is given)
-  6: 3,   // Potion — unlocked at level 3 (when 2x2 is taught)
-  7: 7,   // Magic Wand — unlocked at level 7
-  8: 10,  // Treasure Chest — unlocked at level 10
-  9: 13,  // Slingshot — unlocked at level 13
-  10: 9,  // Cloud/Shuffle — unlocked at level 9
-  11: 15, // Love Letter — unlocked at level 15
+  2: 4,   // Lightning — unlocked at level 4 (4-in-a-row)
+  6: 5,   // Potion — unlocked at level 5 (2x2 square)
+  1: 6,   // Bomb — unlocked at level 6 (L/T shape)
+  3: 7,   // Rainbow Star — unlocked at level 7 (5-in-a-row)
+  7: 8,   // Magic Wand — unlocked at level 8
+  4: 9,   // Magnet — unlocked at level 9
+  5: 10,  // Stopwatch — unlocked at level 10
+  10: 11, // Cloud/Shuffle — unlocked at level 11
+  8: 13,  // Treasure Chest — unlocked at level 13
+  9: 15,  // Slingshot — unlocked at level 15
+  11: 17, // Love Letter — unlocked at level 17
 };
 
 let newlyUnlockedTool = 0; // tool number that was just unlocked this level (0 = none)
@@ -1334,6 +1835,7 @@ function initToolInventory() {
       toolInventory[t.tool] = 0;
     }
   }
+  toolInventorySnapshot = { ...toolInventory };
 }
 initToolInventory();
 
@@ -1630,6 +2132,10 @@ function initGrid() {
     return;
   }
 
+  // Check if this level has a start pattern (procedurally generated levels)
+  const lvlCfg = getLevelConfig(level);
+  const startPat = lvlCfg.startPattern;
+
   for (let r = 0; r < ROWS; r++) {
     grid[r] = [];
     special[r] = [];
@@ -1642,9 +2148,14 @@ function initGrid() {
         continue;
       }
       let type;
-      do {
-        type = randomType();
-      } while (wouldMatch(r, c, type));
+      if (startPat && startPat[r] && startPat[r][c] !== undefined) {
+        // Use the designed start pattern gem
+        type = startPat[r][c] % NUM_TYPES;
+      } else {
+        do {
+          type = randomType();
+        } while (wouldMatch(r, c, type));
+      }
       grid[r][c] = type;
       special[r][c] = 0; // no special tool
       obstacles[r][c] = null;
@@ -1652,6 +2163,8 @@ function initGrid() {
   }
   // Place obstacles based on level
   initObstacles();
+  initHiddenObjects();
+  initGoalProgress();
   // Start obstacle tutorial if applicable (level 6)
   if (TUTORIAL_LEVELS[level] && TUTORIAL_LEVELS[level].useHintNearObstacle) {
     startGuidedTutorial();
@@ -2261,6 +2774,20 @@ function processMatches() {
   }
 
   score += Math.round(totalScore * difficultyScoreMultiplier);
+
+  // Update goal progress for cleared gems and tool spawns
+  for (const group of groups) {
+    for (const cell of group.cells) {
+      const gemType = grid[cell.row][cell.col];
+      if (gemType >= 0) {
+        updateGoalProgress('gem_cleared', { gemType });
+      }
+    }
+    if (group.spawnTool !== null) {
+      updateGoalProgress('tool_created', { toolNum: group.spawnTool });
+    }
+  }
+
   sfxMatch(cascadeLevel);
   checkLevelComplete();
   lastSwap = null; // Only use swap position for the initial match, not cascades
@@ -2330,6 +2857,9 @@ function processMatches() {
     for (const spawn of toolSpawns) {
       // Don't place tools on obstacle cells
       if (hasObstacle(spawn.row, spawn.col)) continue;
+      // Check if tool is unlocked at current level
+      const unlockLvl = TOOL_UNLOCK_LEVEL[spawn.toolNum] || 1;
+      if (level < unlockLvl) continue;
       // Place the special tool tile at the spawn position
       // Keep the gem type so it has a "color" identity, but mark it special
       if (grid[spawn.row][spawn.col] === -1) {
@@ -2367,9 +2897,12 @@ function damageObstacle(r, c, damageType) {
   }
   // 'tool' damage is always accepted by all obstacle types
 
+  const obsType = obs.type;
   obs.hp--;
   if (obs.hp <= 0) {
     obstacles[r][c] = null;
+    updateGoalProgress('obstacle_destroyed', { obstacleType: obsType });
+    revealHiddenObject(r, c);
     // Break effect — sparkles + shake
     spawnSparkles(
       boardX + c * tileSize + tileSize / 2,
@@ -2411,6 +2944,8 @@ function damageIceObstacle(r, c) {
   obs.hp--;
   if (obs.hp <= 0) {
     obstacles[r][c] = null;
+    updateGoalProgress('obstacle_destroyed', { obstacleType: 'ice' });
+    revealHiddenObject(r, c);
     spawnSparkles(
       boardX + c * tileSize + tileSize / 2,
       boardY + r * tileSize + tileSize / 2,
@@ -2459,15 +2994,33 @@ function damageAdjacentObstacles(clearedCells) {
 function checkLevelComplete() {
   if (levelComplete || gameOver) return;
   const cfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
-  if (score >= cfg.target) {
+
+  // Goal-based completion: all goals must be met
+  let complete = false;
+  if (goalProgress.length > 0) {
+    // Update any score-type goals
+    for (const g of goalProgress) {
+      if (g.type === 'score') {
+        g.current = score;
+        if (g.current >= g.target) g.completed = true;
+      }
+    }
+    complete = checkAllGoalsComplete();
+  } else {
+    // Fallback: score-based for levels without goals
+    complete = score >= cfg.target;
+  }
+
+  if (complete) {
     levelComplete = true;
     sfxLevelComplete();
-    // Sync progress to spouse immediately
+    // Star calculation: based on points (bonus economy)
+    const t = cfg.target;
+    const stars = score >= t * 2 ? 3 : score >= t ? 2 : 1;
+    saveLevelStars(level, stars);
+    // Sync progress to spouse
     if (gistSync.isConfigured()) {
-      const stars = score >= cfg.target * 2 ? 3 : score >= cfg.target ? 2 : 1;
-      saveLevelStars(level, stars);
       gistSync.syncGameProgress().catch(() => {});
-      // Send sweet milestone messages at certain levels
       const milestones = { 5: "We made it through 5 levels together! 💕", 10: "10 levels! Playing with you makes everything sweeter 🥰", 15: "Level 15! You inspire me to keep going ❤️", 20: "20 levels conquered together! I love doing life with you 💑" };
       if (milestones[level]) {
         gistSync.sendLoveNote(milestones[level]).catch(() => {});
@@ -2482,7 +3035,7 @@ function checkLevelComplete() {
         }
       }
     }
-    levelCompleteDelay = 0.5; // initial delay before starting tool cascade
+    levelCompleteDelay = 0.5;
     scorePopups.push({
       x: W / 2, y: H / 3,
       text: 'Level Complete!', alpha: 1, dy: 0,
@@ -2891,6 +3444,7 @@ function useTool(toolNum, row, col) {
   if (count <= 0) { activeTool = null; return; }
 
   toolInventory[toolNum]--;
+  updateGoalProgress('tool_used', { toolNum });
   activeTool = null;
   selected = null;
 
@@ -4337,14 +4891,19 @@ function handleRestartClick(cx, cy) {
   if (!gameOver) return false;
   // Match button position from drawGameOver()
   const isFinale = levelComplete && level === 20;
-  const panelH = isFinale ? tileSize * 4.2 : tileSize * 3.5;
+  const goalRowsH = goalProgress.length > 0 ? goalProgress.length * 0.28 + 0.3 : 0;
+  const panelH = isFinale ? tileSize * (4.2 + goalRowsH) : tileSize * (3.5 + goalRowsH);
   const panelY = H / 2 - panelH / 2 - 10;
   // Reconstruct yOff to find button position
   let yOff = panelY + tileSize * 0.15;
   if (isFinale) { yOff += tileSize * 0.35 + tileSize * 0.4 + tileSize * 0.35; }
   else { yOff += tileSize * 0.32 + tileSize * 0.4; }
   yOff += tileSize * 0.55; // stars
-  yOff += tileSize * 0.6; // score
+  // Goal summary rows
+  if (goalProgress.length > 0) {
+    yOff += tileSize * (goalProgress.length * 0.28 + 0.1);
+  }
+  yOff += tileSize * 0.5; // score
   const btnW = 180, btnH = 44;
   const btnX = W / 2 - btnW / 2;
   const btnY = yOff;
@@ -4357,6 +4916,10 @@ function handleRestartClick(cx, cy) {
       const t = cfg.target;
       const stars = score >= t * 2 ? 3 : score >= t ? 2 : score >= t * 0.5 ? 1 : 0;
       saveLevelStars(level, stars);
+    } else {
+      // Failed level: add handicap mark and restore tools
+      addHandicapMark(level);
+      toolInventory = { ...toolInventorySnapshot };
     }
     restartGame();
     return true;
@@ -4862,6 +5425,25 @@ function drawObstacle(row, col, obs) {
     }
   }
 
+  // Hidden object shimmer indicator
+  if (hiddenObjects[row] && hiddenObjects[row][col]) {
+    const shimmer = 0.3 + 0.2 * Math.sin(performance.now() / 400 + row * 3 + col * 7);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(255, 255, 200, ${shimmer})`;
+    drawRoundedRect(x, y, w, h, 6);
+    ctx.fill();
+    // Small sparkle dots
+    const sparkleT = performance.now() / 600;
+    for (let si = 0; si < 3; si++) {
+      const sx = x + w * (0.2 + 0.3 * Math.sin(sparkleT + si * 2));
+      const sy = y + h * (0.2 + 0.3 * Math.cos(sparkleT * 0.7 + si * 3));
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + 0.5 * Math.sin(sparkleT * 2 + si)})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   ctx.restore();
 }
 
@@ -4952,11 +5534,58 @@ function drawHUD() {
   ctx.textBaseline = 'top';
   ctx.fillText('Level ' + level, cx, 8);
 
-  // Score with target (adjusted for difficulty)
+  // Goals or Score display
   const lvlCfg = applyDifficulty(getLevelConfig(level), currentDifficulty);
-  ctx.font = 'bold ' + (tileSize * 0.45) + 'px sans-serif';
-  ctx.fillStyle = score >= lvlCfg.target ? '#4caf50' : '#880e4f';
-  ctx.fillText(score.toLocaleString() + ' / ' + lvlCfg.target.toLocaleString(), cx, 8 + tileSize * 0.35);
+  if (goalProgress.length > 0) {
+    // Draw compact goal indicators
+    const goalY = 8 + tileSize * 0.35;
+    const goalSpacing = Math.min(tileSize * 0.9, (W - 24) / goalProgress.length);
+    const startX = cx - (goalProgress.length - 1) * goalSpacing / 2;
+    ctx.font = 'bold ' + (tileSize * 0.22) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < goalProgress.length; i++) {
+      const g = goalProgress[i];
+      const gx = startX + i * goalSpacing;
+      // Goal icon
+      let icon = '🎯';
+      if (g.type === 'match_type' || g.type === 'match_any') icon = '💎';
+      else if (g.type === 'destroy_obstacle') icon = '💥';
+      else if (g.type === 'free_hidden') icon = HIDDEN_OBJECT_TYPES[g.objectType]?.emoji || '🔓';
+      else if (g.type === 'create_tool' || g.type === 'use_tool') icon = '🔧';
+      else if (g.type === 'score') icon = '⭐';
+
+      // Background pill
+      ctx.fillStyle = g.completed ? 'rgba(76,175,80,0.3)' : 'rgba(255,255,255,0.2)';
+      drawRoundedRect(gx - goalSpacing * 0.42, goalY - tileSize * 0.16, goalSpacing * 0.84, tileSize * 0.35, 8);
+      ctx.fill();
+
+      // Icon + count
+      ctx.font = (tileSize * 0.2) + 'px serif';
+      ctx.fillText(icon, gx - goalSpacing * 0.15, goalY);
+      ctx.font = 'bold ' + (tileSize * 0.2) + 'px sans-serif';
+      ctx.fillStyle = g.completed ? '#4caf50' : '#880e4f';
+      const countText = g.type === 'score'
+        ? Math.min(g.current, g.target).toLocaleString()
+        : `${Math.min(g.current, g.target)}/${g.target}`;
+      ctx.fillText(countText, gx + goalSpacing * 0.15, goalY);
+
+      if (g.completed) {
+        ctx.fillStyle = '#4caf50';
+        ctx.font = 'bold ' + (tileSize * 0.18) + 'px sans-serif';
+        ctx.fillText('✓', gx + goalSpacing * 0.35, goalY);
+      }
+    }
+    // Small score below goals
+    ctx.font = (tileSize * 0.18) + 'px sans-serif';
+    ctx.fillStyle = '#ad1457';
+    ctx.textAlign = 'center';
+    ctx.fillText('Score: ' + score.toLocaleString(), cx, goalY + tileSize * 0.28);
+  } else {
+    // Fallback: original score display
+    ctx.font = 'bold ' + (tileSize * 0.45) + 'px sans-serif';
+    ctx.fillStyle = score >= lvlCfg.target ? '#4caf50' : '#880e4f';
+    ctx.fillText(score.toLocaleString() + ' / ' + lvlCfg.target.toLocaleString(), cx, 8 + tileSize * 0.35);
+  }
 
   // Timer or Moves display
   const lvlMode = getLevelConfig(level).mode;
@@ -5102,7 +5731,8 @@ function drawGameOver() {
 
   // Panel
   const panelW = W * 0.8;
-  const panelH = isFinale ? tileSize * 4.2 : tileSize * 3.5;
+  const goalRows = goalProgress.length > 0 ? goalProgress.length * 0.28 + 0.3 : 0;
+  const panelH = isFinale ? tileSize * (4.2 + goalRows) : tileSize * (3.5 + goalRows);
   const panelX = (W - panelW) / 2;
   const panelY = H / 2 - panelH / 2 - 10;
 
@@ -5151,11 +5781,23 @@ function drawGameOver() {
   }
   yOff += tileSize * 0.55;
 
-  // Score
+  // Goal summary (if goals exist)
+  if (goalProgress.length > 0) {
+    ctx.font = (tileSize * 0.22) + 'px sans-serif';
+    for (const g of goalProgress) {
+      const icon = g.completed ? '✅' : '❌';
+      const label = getGoalLabel(g);
+      ctx.fillStyle = g.completed ? '#4caf50' : '#c62828';
+      ctx.fillText(`${icon} ${label}: ${Math.min(g.current, g.target)}/${g.target}`, W / 2, yOff);
+      yOff += tileSize * 0.28;
+    }
+    yOff += tileSize * 0.1;
+  }
+  // Score (always shown)
   ctx.fillStyle = '#880e4f';
-  ctx.font = 'bold ' + (tileSize * 0.4) + 'px sans-serif';
+  ctx.font = 'bold ' + (tileSize * 0.3) + 'px sans-serif';
   ctx.fillText('Score: ' + score.toLocaleString(), W / 2, yOff);
-  yOff += tileSize * 0.6;
+  yOff += tileSize * 0.5;
 
   // Primary button (Next Level / Try Again)
   const btnW = 180, btnH = 44;
@@ -5628,10 +6270,11 @@ function render(time, dt) {
   ctx.clearRect(0, 0, W, H);
 
   // Background
+  const theme = getLevelTheme(level);
   const bgGrad = ctx.createLinearGradient(0, 0, W, H);
-  bgGrad.addColorStop(0, '#ffe0ec');
-  bgGrad.addColorStop(0.5, '#ffc2d4');
-  bgGrad.addColorStop(1, '#ffb3c6');
+  bgGrad.addColorStop(0, theme.bg1);
+  bgGrad.addColorStop(0.5, theme.bg2);
+  bgGrad.addColorStop(1, theme.bg3);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
