@@ -737,11 +737,13 @@ function generateLevelConfig(lvl) {
   const targetGem = Math.floor(rand() * gems);
   goals.push({ type: 'match_type', gemType: targetGem, count: 10 + Math.floor(diff * 25) });
 
-  // If obstacles present, add destroy goal
+  // If obstacles present, add destroy goal (clamped to actual obstacle count)
   if (obstacleCount > 0 && obstacleTypes.length > 0) {
     const targetObs = obstacleTypes[Math.floor(rand() * obstacleTypes.length)];
-    goals.push({ type: 'destroy_obstacle', obstacleType: targetObs,
-                 count: Math.max(2, Math.floor(obstacleCount * 0.6)) });
+    // Estimate how many of this specific type will appear (~equal distribution)
+    const estTypeCount = Math.max(1, Math.floor(obstacleCount / obstacleTypes.length));
+    const destroyGoal = Math.max(1, Math.min(estTypeCount, Math.floor(obstacleCount * 0.6)));
+    goals.push({ type: 'destroy_obstacle', obstacleType: targetObs, count: destroyGoal });
   }
 
   // Hidden objects for harder levels
@@ -754,17 +756,38 @@ function generateLevelConfig(lvl) {
     const numHidden = 1 + Math.floor(rand() * Math.min(3, Math.floor(diff * 4)));
     const coverTypes = obstacleTypes.length > 0 ? obstacleTypes : ['ice'];
 
+    const usedCells = new Set(); // prevent overlapping hidden objects
     for (let hi = 0; hi < numHidden; hi++) {
       const size = Math.min(maxSize, 1 + Math.floor(rand() * maxSize));
       const maxR = board.rows - size;
       const maxC = board.cols - size;
       if (maxR < 0 || maxC < 0) continue;
-      const hr = Math.floor(rand() * (maxR + 1));
-      const hc = Math.floor(rand() * (maxC + 1));
-      const cover = coverTypes[Math.floor(rand() * coverTypes.length)];
-      procHiddenObjects.push({ r: hr, c: hc, type: hiddenType, size, coverType: cover, coverHp: 3 });
+      // Try a few random placements to avoid overlap
+      let placed = false;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const hr = Math.floor(rand() * (maxR + 1));
+        const hc = Math.floor(rand() * (maxC + 1));
+        // Check no overlap with existing hidden objects
+        let overlap = false;
+        for (let dr = 0; dr < size && !overlap; dr++)
+          for (let dc = 0; dc < size && !overlap; dc++)
+            if (usedCells.has(`${hr+dr},${hc+dc}`)) overlap = true;
+        if (overlap) continue;
+        // Mark cells used
+        for (let dr = 0; dr < size; dr++)
+          for (let dc = 0; dc < size; dc++)
+            usedCells.add(`${hr+dr},${hc+dc}`);
+        const cover = coverTypes[Math.floor(rand() * coverTypes.length)];
+        procHiddenObjects.push({ r: hr, c: hc, type: hiddenType, size, coverType: cover, coverHp: 3 });
+        placed = true;
+        break;
+      }
     }
-    goals.push({ type: 'free_hidden', objectType: hiddenType, count: numHidden });
+    // Goal count = actual number placed (not requested), so it's always achievable
+    const actualPlaced = procHiddenObjects.length;
+    if (actualPlaced > 0) {
+      goals.push({ type: 'free_hidden', objectType: hiddenType, count: actualPlaced });
+    }
   }
 
   // Boss levels get a score goal too
@@ -1611,16 +1634,44 @@ function initGoalProgress() {
   goalProgress = [];
   if (!cfg.goals || cfg.goals.length === 0) return;
   for (const g of cfg.goals) {
+    // Validate match_type goals: gemType must be within available gem count
+    let gemType = g.gemType;
+    if (g.type === 'match_type' && gemType !== undefined) {
+      if (gemType >= NUM_TYPES) {
+        gemType = gemType % NUM_TYPES; // clamp to available gems
+      }
+    }
+    // Validate destroy_obstacle: make sure obstacle type exists in level
+    let obstacleType = g.obstacleType;
+    if (g.type === 'destroy_obstacle' && obstacleType) {
+      if (!OBSTACLE_TYPES[obstacleType]) {
+        obstacleType = 'ice'; // fallback to ice
+      }
+    }
+    // Validate free_hidden: make sure hidden object type exists
+    let objectType = g.objectType;
+    if (g.type === 'free_hidden' && objectType) {
+      if (!HIDDEN_OBJECT_TYPES[objectType]) {
+        objectType = 'fish'; // fallback
+      }
+    }
+    // Validate tool goals: make sure tool number is valid
+    let toolNum = g.toolNum;
+    if ((g.type === 'create_tool' || g.type === 'use_tool') && toolNum !== undefined) {
+      if (!TOOLS.find(t => t.tool === toolNum)) {
+        continue; // skip invalid tool goals entirely
+      }
+    }
     goalProgress.push({
       type: g.type,
       current: 0,
       target: g.count,
       completed: false,
-      gemType: g.gemType,
-      obstacleType: g.obstacleType,
-      objectType: g.objectType,
+      gemType,
+      obstacleType,
+      objectType,
       label: g.label || '',
-      toolNum: g.toolNum,
+      toolNum,
     });
   }
 }
